@@ -2,11 +2,13 @@ const jwt = require('jsonwebtoken');
 const User = require('../models/User');
 
 const protect = async (req, res, next) => {
-  let token = req.cookies?.accessToken;
+  let token;
 
-  // Accept Bearer header as fallback
-  if (!token && req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+  // Prefer Authorization header (works cross-domain and in incognito)
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies?.accessToken) {
+    token = req.cookies.accessToken;
   }
 
   if (token) {

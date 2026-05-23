@@ -1,17 +1,17 @@
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
-import { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useState, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import api from '../utils/axios';
 import ScreenTimeTracker from './ScreenTimeTracker';
-import { 
-  LayoutDashboard, 
-  UserPlus, 
-  Users, 
-  LogOut, 
-  Clock, 
-  ListTodo, 
-  FileText, 
-  Award, 
+import {
+  LayoutDashboard,
+  UserPlus,
+  Users,
+  LogOut,
+  Clock,
+  ListTodo,
+  FileText,
+  Award,
   Calendar,
   Cake,
   Settings,
@@ -26,73 +26,48 @@ import {
   Phone
 } from 'lucide-react';
 
-export default function AdminLayout() {
-  const { user, logout } = useContext(AuthContext);
-  const navigate = useNavigate();
-  const location = useLocation();
-  const [birthdays, setBirthdays] = useState([]);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+const menuGroups = [
+  {
+    label: 'Personal Space',
+    items: [
+      { name: 'Dashboard', path: null, icon: <LayoutDashboard size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'], dynamicPath: (role) => role === 'Employee' ? '/employee' : '/admin' },
+      { name: 'My Profile', path: '/admin/profile', icon: <Users size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
+      { name: 'Attendance History', path: '/admin/attendance', icon: <Clock size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
+      { name: 'My Tasks', path: '/admin/tasks', icon: <ListTodo size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
+      { name: 'Salary Slips', path: '/admin/my-payroll', icon: <FileText size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
+      { name: 'KPI Leaderboard', path: '/admin/leaderboard', icon: <Award size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
+      { name: 'WFH Request', path: '/admin/wfh-request', icon: <Home size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
+      { name: 'Screen Time', path: '/admin/screen-time', icon: <Monitor size={18} />, roles: ['SuperAdmin'] },
+      { name: 'Call Logs', path: '/counselling', icon: <Phone size={18} />, roles: ['Counselling Team'] },
+    ]
+  },
+  {
+    label: 'Management',
+    roles: ['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin'],
+    items: [
+      { name: 'Task Management', path: '/admin/tasks', icon: <ListTodo size={18} />, roles: ['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin'] },
+      { name: 'Employee Directory', path: '/admin/employees', icon: <Users size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
+      { name: 'Team Attendance', path: '/admin/manage-attendance', icon: <Clock size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
+      { name: 'Attendance Dashboard', path: '/admin/team-attendance', icon: <Calendar size={18} />, roles: ['HR', 'Admin', 'AGM', 'SuperAdmin'] },
+      { name: 'Payroll Records', path: '/admin/payroll', icon: <FileText size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
+      { name: 'KPI Management', path: '/admin/kpi-management', icon: <Award size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
+      { name: 'Holiday Calendar', path: '/admin/holidays', icon: <Calendar size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
+      { name: 'Onboard Staff', path: '/admin/add-employee', icon: <UserPlus size={18} />, roles: ['Admin', 'HR', 'SuperAdmin'] },
+      { name: 'Verification Queue', path: '/admin/verification-queue', icon: <ShieldCheck size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
+      { name: 'Geofences', path: '/admin/geofences', icon: <MapPin size={18} />, roles: ['Admin', 'AGM', 'SuperAdmin'] },
+      { name: 'WFH Approvals', path: '/admin/wfh-approvals', icon: <Home size={18} />, roles: ['Admin', 'AGM', 'SuperAdmin'] },
+      { name: 'Company Management', path: '/admin/companies', icon: <Building2 size={18} />, roles: ['SuperAdmin'] },
+      { name: 'Audit Logs', path: '/admin/audit-logs', icon: <ScrollText size={18} />, roles: ['SuperAdmin'] },
+      { name: 'Screen Time Monitor', path: '/admin/screen-time', icon: <Monitor size={18} />, roles: ['SuperAdmin'] },
+      { name: 'Counselling Logs', path: '/admin/counselling', icon: <Phone size={18} />, roles: ['SuperAdmin'] },
+    ]
+  }
+];
 
-  useEffect(() => {
-    fetchBirthdays();
-  }, []);
+function SidebarContent({ user, navigate, location, logout, birthdays }) {
+  const navRef = useRef(null);
 
-  useEffect(() => {
-    setIsDrawerOpen(false);
-  }, [location.pathname]);
-
-  const fetchBirthdays = async () => {
-    try {
-      if (!['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin', 'Employee'].includes(user?.role)) return;
-      const { data } = await api.get('/employees/stats');
-      setBirthdays(data.upcomingBirthdays || []);
-    } catch (err) {
-      console.error('Failed to fetch birthdays for sidebar');
-    }
-  };
-
-  const menuGroups = [
-    {
-      label: 'Personal Space',
-      items: [
-        { name: 'Dashboard', path: user?.role === 'Employee' ? '/employee' : '/admin', icon: <LayoutDashboard size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
-        { name: 'My Profile', path: '/admin/profile', icon: <Users size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
-        { name: 'Attendance History', path: '/admin/attendance', icon: <Clock size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
-        { name: 'My Tasks', path: '/admin/tasks', icon: <ListTodo size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
-        { name: 'Salary Slips', path: '/admin/my-payroll', icon: <FileText size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
-        { name: 'KPI Leaderboard', path: '/admin/leaderboard', icon: <Award size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
-        { name: 'WFH Request', path: '/admin/wfh-request', icon: <Home size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
-        // Screen Time: SuperAdmin only
-        { name: 'Screen Time', path: '/admin/screen-time', icon: <Monitor size={18} />, roles: ['SuperAdmin'] },
-        // Counselling Team dashboard
-        { name: 'Call Logs', path: '/counselling', icon: <Phone size={18} />, roles: ['Counselling Team'] },
-      ]
-    },
-
-    {
-      label: 'Management',
-      roles: ['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin'],
-      items: [
-        { name: 'Task Management', path: '/admin/tasks', icon: <ListTodo size={18} />, roles: ['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin'] },
-        { name: 'Employee Directory', path: '/admin/employees', icon: <Users size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
-        { name: 'Team Attendance', path: '/admin/manage-attendance', icon: <Clock size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
-        { name: 'Attendance Dashboard', path: '/admin/team-attendance', icon: <Calendar size={18} />, roles: ['HR', 'Admin', 'AGM', 'SuperAdmin'] },
-        { name: 'Payroll Records', path: '/admin/payroll', icon: <FileText size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
-        { name: 'KPI Management', path: '/admin/kpi-management', icon: <Award size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
-        { name: 'Holiday Calendar', path: '/admin/holidays', icon: <Calendar size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
-        { name: 'Onboard Staff', path: '/admin/add-employee', icon: <UserPlus size={18} />, roles: ['Admin', 'HR', 'SuperAdmin'] },
-        { name: 'Verification Queue', path: '/admin/verification-queue', icon: <ShieldCheck size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
-        { name: 'Geofences', path: '/admin/geofences', icon: <MapPin size={18} />, roles: ['Admin', 'AGM', 'SuperAdmin'] },
-        { name: 'WFH Approvals', path: '/admin/wfh-approvals', icon: <Home size={18} />, roles: ['Admin', 'AGM', 'SuperAdmin'] },
-        { name: 'Company Management', path: '/admin/companies', icon: <Building2 size={18} />, roles: ['SuperAdmin'] },
-        { name: 'Audit Logs', path: '/admin/audit-logs', icon: <ScrollText size={18} />, roles: ['SuperAdmin'] },
-        { name: 'Screen Time Monitor', path: '/admin/screen-time', icon: <Monitor size={18} />, roles: ['SuperAdmin'] },
-        { name: 'Counselling Logs', path: '/admin/counselling', icon: <Phone size={18} />, roles: ['SuperAdmin'] },
-      ]
-    }
-  ];
-
-  const SidebarContent = () => (
+  return (
     <>
       <div className="flex items-center gap-3 mb-8 px-2 group cursor-pointer" onClick={() => navigate('/admin')}>
         <div className="p-2.5 rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/20 group-hover:scale-110 transition-transform">
@@ -124,7 +99,7 @@ export default function AdminLayout() {
         </div>
       </div>
 
-      <nav className="flex-1 space-y-8 overflow-y-auto no-scrollbar pr-1">
+      <nav ref={navRef} className="flex-1 space-y-8 overflow-y-auto no-scrollbar pr-1">
         {menuGroups.map((group, idx) => {
           const hasAccess = !group.roles || group.roles.includes(user?.role);
           if (!hasAccess) return null;
@@ -135,12 +110,13 @@ export default function AdminLayout() {
               <div className="space-y-1">
                 {group.items.map((item, i) => {
                   if (!item.roles.includes(user?.role)) return null;
-                  const isActive = location.pathname === item.path;
+                  const resolvedPath = item.dynamicPath ? item.dynamicPath(user?.role) : item.path;
+                  const isActive = location.pathname === resolvedPath;
 
                   return (
                     <button
                       key={i}
-                      onClick={() => navigate(item.path)}
+                      onClick={() => navigate(resolvedPath)}
                       className={`w-full flex items-center gap-3.5 px-4 py-3 rounded-2xl transition-all font-bold text-sm ${
                         isActive ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20' : 'hover:bg-white/5 hover:text-slate-200'
                       }`}
@@ -193,6 +169,33 @@ export default function AdminLayout() {
       </div>
     </>
   );
+}
+
+export default function AdminLayout() {
+  const { user, logout } = useContext(AuthContext);
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [birthdays, setBirthdays] = useState([]);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+
+  useEffect(() => {
+    const fetchBirthdays = async () => {
+      try {
+        if (!['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin', 'Employee'].includes(user?.role)) return;
+        const { data } = await api.get('/employees/stats');
+        setBirthdays(data.upcomingBirthdays || []);
+      } catch (err) {
+        console.error('Failed to fetch birthdays for sidebar');
+      }
+    };
+    fetchBirthdays();
+  }, []);
+
+  useEffect(() => {
+    setIsDrawerOpen(false);
+  }, [location.pathname]);
+
+  const sidebarProps = { user, navigate, location, logout, birthdays };
 
   return (
     <div className="min-h-screen bg-slate-50 lg:flex">
@@ -223,13 +226,13 @@ export default function AdminLayout() {
                 <X size={18} />
               </button>
             </div>
-            <SidebarContent />
+            <SidebarContent {...sidebarProps} />
           </aside>
         </div>
       )}
 
       <aside className="hidden lg:flex lg:w-[280px] bg-slate-900 text-slate-400 p-6 flex-col h-screen sticky top-0 border-r border-slate-800 shadow-2xl z-40">
-        <SidebarContent />
+        <SidebarContent {...sidebarProps} />
       </aside>
 
       <main className="flex-1 min-w-0 overflow-y-auto">
@@ -242,4 +245,3 @@ export default function AdminLayout() {
     </div>
   );
 }
-

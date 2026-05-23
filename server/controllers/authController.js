@@ -4,11 +4,11 @@ const crypto = require('crypto');
 const nodemailer = require('nodemailer');
 
 const generateAccessToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET, { expiresIn: '15m' });
+  return jwt.sign({ id }, process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET, { expiresIn: '7d' });
 };
 
 const generateRefreshToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ id }, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET, { expiresIn: '30d' });
 };
 
 // @desc    Register a new user (Stage 1: Email only)
@@ -178,72 +178,52 @@ const loginUser = async (req, res) => {
       });
     }
 
-    // Helper function to set cookies
-    const setTokenCookies = async (userDoc) => {
+    // Helper function to generate tokens and persist refresh token
+    const generateTokens = async (userDoc) => {
       const accessToken = generateAccessToken(userDoc._id);
       const refreshToken = generateRefreshToken(userDoc._id);
-
       userDoc.refreshToken = refreshToken;
       await userDoc.save({ validateBeforeSave: false });
-
-      const isProduction = process.env.NODE_ENV === 'production';
-      const cookieOptions = {
-        httpOnly: true,
-        secure: isProduction,
-        sameSite: isProduction ? 'none' : 'lax',
-      };
-
-      res.cookie('accessToken', accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 });
-      res.cookie('refreshToken', refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
+      return { accessToken, refreshToken };
     };
 
     // Check KYC Status - We allow login for all statuses, let frontend route accordingly
+    const buildUserPayload = (u, extra = {}) => ({
+      _id: u._id,
+      name: u.name,
+      email: u.email,
+      role: u.role,
+      department: u.department || null,
+      designation: u.designation || null,
+      employeeId: u.employeeId || null,
+      totalKpi: u.totalKpi || 0,
+      kycStatus: u.kycStatus,
+      ...extra
+    });
+
+    const { accessToken, refreshToken } = await generateTokens(user);
+
     if (user.kycStatus === 'Incomplete' || user.kycStatus === 'Rejected') {
-      await setTokenCookies(user);
       return res.json({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        department: user.department || null,
-        designation: user.designation || null,
-        employeeId: user.employeeId || null,
-        totalKpi: user.totalKpi || 0,
-        kycStatus: user.kycStatus,
-        message: user.kycStatus === 'Incomplete'
-          ? 'Please complete your profile details for verification.'
-          : 'Your KYC was rejected. Please update your details and re-submit.'
+        ...buildUserPayload(user, {
+          message: user.kycStatus === 'Incomplete'
+            ? 'Please complete your profile details for verification.'
+            : 'Your KYC was rejected. Please update your details and re-submit.'
+        }),
+        accessToken,
+        refreshToken
       });
     }
 
     if (user.kycStatus === 'Pending' && user.role === 'Employee') {
-      await setTokenCookies(user);
       return res.json({
-        _id: user._id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        department: user.department || null,
-        designation: user.designation || null,
-        employeeId: user.employeeId || null,
-        totalKpi: user.totalKpi || 0,
-        kycStatus: 'Pending',
-        message: 'Your account is under review. Please wait for HR approval.'
+        ...buildUserPayload(user, { message: 'Your account is under review. Please wait for HR approval.' }),
+        accessToken,
+        refreshToken
       });
     }
 
-    await setTokenCookies(user);
-    res.json({
-      _id: user._id,
-      name: user.name,
-      email: user.email,
-      role: user.role,
-      department: user.department || null,
-      designation: user.designation || null,
-      employeeId: user.employeeId || null,
-      totalKpi: user.totalKpi || 0,
-      kycStatus: user.kycStatus
-    });
+    res.json({ ...buildUserPayload(user), accessToken, refreshToken });
 
   } catch (error) {
     res.status(500).json({ message: error.message });
@@ -365,7 +345,8 @@ const resetPassword = async (req, res) => {
 // @route   POST /api/auth/refresh-token
 // @access  Public
 const refreshTokenController = async (req, res) => {
-  const refreshToken = req.cookies.refreshToken;
+  // Accept refresh token from body (localStorage-based auth) or cookie (fallback)
+  const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
 
   if (!refreshToken) {
     return res.status(401).json({ message: 'Not authorized, no refresh token' });
@@ -373,31 +354,19 @@ const refreshTokenController = async (req, res) => {
 
   try {
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
-    
     const user = await User.findById(decoded.id);
 
     if (!user || user.refreshToken !== refreshToken) {
       return res.status(403).json({ message: 'Invalid refresh token' });
     }
 
-    // Generate new tokens (rotation)
     const newAccessToken = generateAccessToken(user._id);
     const newRefreshToken = generateRefreshToken(user._id);
 
     user.refreshToken = newRefreshToken;
     await user.save({ validateBeforeSave: false });
 
-    const isProduction = process.env.NODE_ENV === 'production';
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'none' : 'lax',
-    };
-
-    res.cookie('accessToken', newAccessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 });
-    res.cookie('refreshToken', newRefreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 });
-
-    res.status(200).json({ message: 'Token refreshed successfully' });
+    res.status(200).json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
   } catch (error) {
     res.status(403).json({ message: 'Invalid refresh token or expired' });
   }
@@ -407,8 +376,8 @@ const refreshTokenController = async (req, res) => {
 // @route   POST /api/auth/logout
 // @access  Public
 const logoutUser = async (req, res) => {
-  const refreshToken = req.cookies.refreshToken;
-  
+  const refreshToken = req.body.refreshToken || req.cookies?.refreshToken;
+
   if (refreshToken) {
     try {
       const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET);
@@ -421,10 +390,6 @@ const logoutUser = async (req, res) => {
       // Ignore token verification error on logout
     }
   }
-
-  const isProduction = process.env.NODE_ENV === 'production';
-  res.clearCookie('accessToken', { httpOnly: true, secure: isProduction, sameSite: isProduction ? 'none' : 'lax' });
-  res.clearCookie('refreshToken', { httpOnly: true, secure: isProduction, sameSite: isProduction ? 'none' : 'lax' });
 
   res.status(200).json({ message: 'Logged out successfully' });
 };

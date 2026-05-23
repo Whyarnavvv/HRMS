@@ -1,6 +1,8 @@
 import { createContext, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/axios';
+import { baseURL } from '../utils/axios';
+import axios from 'axios';
 
 export const AuthContext = createContext();
 
@@ -10,25 +12,34 @@ export const AuthProvider = ({ children }) => {
   const navigate = useNavigate();
   const refreshAttempted = useRef(false);
 
-  // On mount: silently try to refresh the access token so existing sessions survive page reloads
+  // On mount: silently refresh tokens so sessions survive page reloads
   useEffect(() => {
     if (refreshAttempted.current) return;
     refreshAttempted.current = true;
 
     const storedUser = JSON.parse(localStorage.getItem('user'));
-    if (!storedUser) {
+    const storedRefreshToken = localStorage.getItem('refreshToken');
+
+    if (!storedUser || !storedRefreshToken) {
+      setUser(null);
+      localStorage.removeItem('user');
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
       setAuthReady(true);
       return;
     }
 
-    api.post('/auth/refresh-token')
-      .then(() => {
+    axios.post(`${baseURL}/api/auth/refresh-token`, { refreshToken: storedRefreshToken })
+      .then(({ data }) => {
+        localStorage.setItem('accessToken', data.accessToken);
+        localStorage.setItem('refreshToken', data.refreshToken);
         setUser(storedUser);
       })
       .catch(() => {
-        // Refresh token also expired — clear session
         setUser(null);
         localStorage.removeItem('user');
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('refreshToken');
       })
       .finally(() => setAuthReady(true));
   }, []);
@@ -36,18 +47,20 @@ export const AuthProvider = ({ children }) => {
   const login = async (email, password) => {
     try {
       const { data } = await api.post('/auth/login', { email, password });
-      setUser(data);
-      localStorage.setItem('user', JSON.stringify(data));
-      
-      // Smart Navigation
-      if (data.kycStatus === 'Incomplete' || data.kycStatus === 'Rejected') {
-         navigate('/kyc-submission');
-      } else if (data.kycStatus === 'Pending') {
-         navigate('/verification-pending');
-      } else if (['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin'].includes(data.role)) {
-         navigate('/admin');
+      const { accessToken, refreshToken, ...userData } = data;
+      localStorage.setItem('accessToken', accessToken);
+      localStorage.setItem('refreshToken', refreshToken);
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
+
+      if (userData.kycStatus === 'Incomplete' || userData.kycStatus === 'Rejected') {
+        navigate('/kyc-submission');
+      } else if (userData.kycStatus === 'Pending') {
+        navigate('/verification-pending');
+      } else if (['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin'].includes(userData.role)) {
+        navigate('/admin');
       } else {
-         navigate('/employee');
+        navigate('/employee');
       }
     } catch (error) {
       throw error.response?.data?.message || 'Login failed';
@@ -57,8 +70,13 @@ export const AuthProvider = ({ children }) => {
   const register = async (name, email, password) => {
     try {
       const { data } = await api.post('/auth/register', { name, email, password });
-      setUser(data);
-      localStorage.setItem('user', JSON.stringify(data));
+      const { accessToken, refreshToken, ...userData } = data;
+      if (accessToken) {
+        localStorage.setItem('accessToken', accessToken);
+        localStorage.setItem('refreshToken', refreshToken);
+      }
+      localStorage.setItem('user', JSON.stringify(userData));
+      setUser(userData);
       navigate('/employee');
     } catch (error) {
       throw error.response?.data?.message || 'Registration failed';
@@ -67,16 +85,18 @@ export const AuthProvider = ({ children }) => {
 
   const logout = async () => {
     try {
-      await api.post('/auth/logout');
+      const refreshToken = localStorage.getItem('refreshToken');
+      await api.post('/auth/logout', { refreshToken });
     } catch (err) {
       console.error('Logout error:', err);
     }
     setUser(null);
     localStorage.removeItem('user');
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
     navigate('/');
   };
 
-  // Don't render children until we know auth state (prevents flash-redirect to login)
   if (!authReady) return null;
 
   return (
@@ -85,4 +105,3 @@ export const AuthProvider = ({ children }) => {
     </AuthContext.Provider>
   );
 };
-

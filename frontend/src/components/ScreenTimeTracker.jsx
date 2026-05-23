@@ -87,10 +87,13 @@ export default function ScreenTimeTracker() {
       if (!checkedInRef.current) return;
       e.preventDefault();
       e.returnValue = TAB_CLOSE_IDLE_MSG;
-      // Log tab-close idle event — fires best-effort before page unloads
-      navigator.sendBeacon
-        ? navigator.sendBeacon(`${baseURL}/api/screen-time/idle-event`, JSON.stringify({ reason: 'tab_closed', date: getToday() }))
-        : api.post('/screen-time/idle-event', { reason: 'tab_closed', date: getToday() }).catch(() => {});
+      const token = localStorage.getItem('accessToken');
+      fetch(`${baseURL}/api/screen-time/idle-event`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ reason: 'tab_closed', date: getToday() }),
+        keepalive: true,
+      }).catch(() => {});
     };
     window.addEventListener('beforeunload', handleBeforeUnload);
 
