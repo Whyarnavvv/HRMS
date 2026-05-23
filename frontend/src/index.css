@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+html, body {
+  background-color: #f8fafc; /* Tailwind slate-50 */
+  color: #0f172a;           /* Tailwind slate-900 */
+  margin: 0;
+  padding: 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.animate-fade-in {
+  animation: fadeIn 0.4s ease forwards;
+}
+
+/* Quick utility defaults to replace custom classNames if lingering */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition-property: color, background-color, border-color;
+  transition-duration: 150ms;
+}
+
+/* Minimal React Calendar overrides so it doesn't break spacing */
+.react-calendar {
+  width: 100% !important;
+  border: none !important;
+  background-color: transparent !important;
+  font-family: inherit !important;
+}
+.react-calendar__navigation button {
+  min-width: 44px;
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  font-weight: 600;
+  padding: 0.5rem;
+  color: #0f172a;
+}
+.react-calendar__navigation button:hover {
+  background-color: #f1f5f9;
+  border-radius: 8px;
+}
+.react-calendar__month-view__days__day {
+  padding: 0.75rem 0.5rem;
+  background: transparent;
+  border: none;
+  font-size: 0.9rem;
+  color: #334155;
+  border-radius: 6px;
+}
+.react-calendar__month-view__days__day:hover {
+  background-color: #f1f5f9;
+  cursor: pointer;
+}
+.react-calendar__tile--now {
+  background-color: transparent !important;
+  border: 1px solid #3b82f6 !important;
+  color: #2563eb !important;
+}
+.react-calendar__tile--active {
+  background-color: #3b82f6 !important;
+  color: white !important;
+}
