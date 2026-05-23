@@ -1,5 +1,5 @@
 import { useEffect, useRef, useContext } from 'react';
-import api from '../utils/axios';
+import api, { baseURL } from '../utils/axios';
 import { AuthContext } from '../context/AuthContext';
 
 const IDLE_THRESHOLD_MS = 4 * 60 * 1000;   // 4 minutes
@@ -89,7 +89,7 @@ export default function ScreenTimeTracker() {
       e.returnValue = TAB_CLOSE_IDLE_MSG;
       // Log tab-close idle event — fires best-effort before page unloads
       navigator.sendBeacon
-        ? navigator.sendBeacon('/api/screen-time/idle-event', JSON.stringify({ reason: 'tab_closed', date: getToday() }))
+        ? navigator.sendBeacon(`${baseURL}/api/screen-time/idle-event`, JSON.stringify({ reason: 'tab_closed', date: getToday() }))
         : api.post('/screen-time/idle-event', { reason: 'tab_closed', date: getToday() }).catch(() => {});
     };
     window.addEventListener('beforeunload', handleBeforeUnload);

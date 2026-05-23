@@ -4,8 +4,9 @@ const rateLimit = require('express-rate-limit');
 const { loginUser, registerUser, setupPassword, checkToken, forgotPassword, resetPassword, refreshTokenController, logoutUser } = require('../controllers/authController');
 
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 5, // limit each IP to 5 requests per windowMs
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  keyGenerator: (req) => req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip,
   message: { message: 'Too many requests from this IP, please try again after 15 minutes' }
 });
 

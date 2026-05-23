@@ -14,6 +14,8 @@ dotenv.config();
 
 const app = express();
 
+app.set('trust proxy', 1); // Trust Render's reverse proxy for correct client IPs
+
 app.use(helmet({
   crossOriginResourcePolicy: { policy: "cross-origin" }
 }));
