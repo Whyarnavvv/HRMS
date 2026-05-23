@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
-const nodemailer = require('nodemailer');
+const { sendEmail } = require('../utils/emailService');
 
 const generateAccessToken = (id) => {
   return jwt.sign({ id }, process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET, { expiresIn: '7d' });
@@ -47,23 +47,10 @@ const registerUser = async (req, res) => {
     await user.save();
 
     if (user) {
-      // Send Verification Email
-      const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'smtp.gmail.com',
-        port: process.env.SMTP_PORT || 587,
-        secure: false, // true for 465, false for other ports
-        auth: {
-          user: process.env.SMTP_USER || process.env.EMAIL_USER,
-          pass: process.env.SMTP_PASS || process.env.EMAIL_PASS
-        }
-      });
-
       const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
       const url = `${frontendBase}/setup-password/${verificationToken}`;
-      const senderEmail = process.env.SMTP_USER || process.env.EMAIL_USER;
 
-      const mailOptions = {
-        from: `"Study Palace Hub" <${senderEmail}>`,
+      await sendEmail({
         to: email,
         subject: 'Action Required: Set Up Your HRMS Account',
         html: `
@@ -79,25 +66,12 @@ const registerUser = async (req, res) => {
             <p><em>This link will expire in 24 hours.</em></p>
           </div>
         `
-      };
-
-      try {
-        if (!senderEmail || (!process.env.SMTP_PASS && !process.env.EMAIL_PASS)) {
-          console.log(`\n📧 [SIMULATION] Verification & Password Setup link for ${email}: ${url}\n`);
-        } else {
-          await transporter.sendMail(mailOptions);
-          console.log(`✅ Registration email sent successfully to: ${email}`);
-        }
-      } catch (mailError) {
-        console.error('❌ Failed to send registration email:', mailError.message);
-        // We still return 201 because the user was created, but we log the error
-      }
+      });
 
       res.status(201).json({
         message: 'Account initiated. Please check your email to set your password.',
         email: user.email
       });
-
     } else {
       res.status(400).json({ message: 'Invalid user data' });
     }
@@ -248,58 +222,36 @@ const forgotPassword = async (req, res) => {
 
     await user.save({ validateBeforeSave: false });
 
-    // Create reset url
     const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
     const resetUrl = `${frontendBase}/reset-password/${resetToken}`;
 
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: process.env.SMTP_PORT || 587,
-      secure: false, // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER || process.env.EMAIL_USER,
-        pass: process.env.SMTP_PASS || process.env.EMAIL_PASS
-      }
+    const result = await sendEmail({
+      to: user.email,
+      subject: 'Password Reset Request — Study Palace Hub',
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <h2 style="color: #2563eb;">Password Reset Request</h2>
+          <p>Hello ${user.name},</p>
+          <p>You requested a password reset. Click the button below to set a new password:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" style="background: #2563eb; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
+          </div>
+          <p>If the button doesn't work, copy and paste this link:</p>
+          <p style="color: #64748b; font-size: 0.9em;">${resetUrl}</p>
+          <p><em>This link will expire in 15 minutes.</em></p>
+          <p style="color: #94a3b8; font-size: 0.85em;">If you did not request this, please ignore this email.</p>
+        </div>
+      `
     });
 
-    const senderEmail = process.env.SMTP_USER || process.env.EMAIL_USER;
-
-    const message = `
-      <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-        <h2 style="color: #2563eb;">Password Reset Required</h2>
-        <p>Hello ${user.name},</p>
-        <p>You are receiving this email because you (or someone else) has requested the reset of a password. Please make a PUT request to:</p>
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${resetUrl}" style="background: #2563eb; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold;">Reset Password</a>
-        </div>
-        <p>If the button doesn't work, copy and paste this link:</p>
-        <p style="color: #64748b; font-size: 0.9em;">${resetUrl}</p>
-        <p><em>This link will expire in 15 minutes.</em></p>
-      </div>
-    `;
-
-    try {
-      if (!senderEmail || (!process.env.SMTP_PASS && !process.env.EMAIL_PASS)) {
-        console.log(`\n📧 [SIMULATION] Password Reset link for ${email}: ${resetUrl}\n`);
-      } else {
-        await transporter.sendMail({
-          from: `"Study Palace Hub" <${senderEmail}>`,
-          to: user.email,
-          subject: 'Password Reset Token',
-          html: message
-        });
-        console.log(`✅ Password reset email sent successfully to: ${email}`);
-      }
-      res.status(200).json({ success: true, data: 'Email sent' });
-    } catch (err) {
+    if (!result.success && !result.simulated) {
       user.resetPasswordToken = undefined;
       user.resetPasswordExpire = undefined;
-
       await user.save({ validateBeforeSave: false });
-
-      console.error('❌ Failed to send password reset email:', err.message);
-      return res.status(500).json({ message: 'Email could not be sent' });
+      return res.status(500).json({ message: 'Email could not be sent. Please try again.' });
     }
+
+    res.status(200).json({ success: true, data: 'Email sent' });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }

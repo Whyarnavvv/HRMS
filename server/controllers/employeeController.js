@@ -1,5 +1,7 @@
 const User = require('../models/User');
 const Company = require('../models/Company');
+const crypto = require('crypto');
+const { sendEmail } = require('../utils/emailService');
 
 // @desc    Create new employee
 // @route   POST /api/employees
@@ -52,6 +54,33 @@ const createEmployee = async (req, res) => {
     }
 
     const employee = await User.create(employeeData);
+
+    // Send setup password email so the employee can set their own password
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+    employee.emailVerificationToken = verificationToken;
+    employee.emailVerificationTokenExpire = Date.now() + 7 * 24 * 60 * 60 * 1000; // 7 days
+    await employee.save({ validateBeforeSave: false });
+
+    const frontendBase = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+    const setupUrl = `${frontendBase}/setup-password/${verificationToken}`;
+
+    await sendEmail({
+      to: email,
+      subject: 'Welcome to Study Palace Hub — Set Up Your Account',
+      html: `
+        <div style="font-family: sans-serif; max-width: 600px; margin: auto; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <h2 style="color: #2563eb;">Welcome to Study Palace Hub, ${name}!</h2>
+          <p>Your HRMS account has been created by HR. Click the button below to set your password and activate your account:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${setupUrl}" style="background: #2563eb; color: white; padding: 12px 25px; text-decoration: none; border-radius: 8px; font-weight: bold;">Set Up Your Password</a>
+          </div>
+          <p>If the button doesn't work, copy and paste this link:</p>
+          <p style="color: #64748b; font-size: 0.9em;">${setupUrl}</p>
+          <p><em>This link will expire in 7 days.</em></p>
+          <p style="color: #94a3b8; font-size: 0.85em;">If you did not expect this email, please contact HR.</p>
+        </div>
+      `
+    });
 
     // Remove password from response
     const employeeResponse = employee.toObject();
