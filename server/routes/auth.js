@@ -6,7 +6,7 @@ const { loginUser, registerUser, setupPassword, checkToken, forgotPassword, rese
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 100,
-  keyGenerator: (req) => req.headers['x-forwarded-for']?.split(',')[0].trim() || req.ip,
+  validate: { xForwardedForHeader: false },
   message: { message: 'Too many requests from this IP, please try again after 15 minutes' }
 });
 
