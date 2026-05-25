@@ -4,6 +4,13 @@ import { useContext } from 'react';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import AdminDashboard from './pages/AdminDashboard';
+import ManagerDashboardIndex from './pages/ManagerDashboard';
+
+const DashboardIndex = () => {
+  const { user } = useContext(AuthContext);
+  if (user?.role === 'Manager') return <ManagerDashboardIndex />;
+  return <AdminDashboard />;
+};
 import EmployeeDetailAdmin from './pages/EmployeeDetailAdmin';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import AdminLayout from './components/AdminLayout';
@@ -63,8 +70,7 @@ const RoleBasedRedirect = () => {
   if (user.kycStatus === 'Rejected') return <Navigate to="/kyc-submission" />;
 
   if (user.role === 'Counselling Team') return <Navigate to="/counselling" />;
-  if (user.role === 'Manager') return <Navigate to="/admin/manager-dashboard" />;
-  if (['Admin', 'HR', 'AGM', 'SuperAdmin'].includes(user.role)) return <Navigate to="/admin" />;
+  if (['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin'].includes(user.role)) return <Navigate to="/admin" />;
   return <Navigate to="/employee" />;
 };
 
@@ -88,8 +94,8 @@ function App() {
         <Route path="/admin" element={
           <ProtectedRoute allowedRoles={['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin']}><AdminLayout /></ProtectedRoute>
         }>
-          <Route index element={<AdminDashboard />} />
-          <Route path="manager-dashboard" element={<ManagerDashboard />} />
+          <Route index element={<DashboardIndex />} />
+          <Route path="manager-dashboard" element={<ManagerDashboardIndex />} />
           <Route path="add-employee" element={<AddEmployee />} />
           <Route path="employee/:id" element={<EmployeeDetailAdmin />} />
           <Route path="attendance" element={<Attendance />} />
