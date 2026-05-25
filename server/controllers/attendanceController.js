@@ -368,6 +368,37 @@ exports.getTeamAttendanceDashboard = async (req, res) => {
   }
 };
 
+// @desc    Get today's attendance for manager's team
+// @route   GET /api/attendance/team-today
+// @access  Private (Manager, HR, Admin, AGM, SuperAdmin)
+exports.getTeamTodayAttendance = async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    const User = require('../models/User');
+
+    // Manager sees only their department; others see all
+    const userQuery = req.user.role === 'Manager'
+      ? { department: req.user.department, _id: { $ne: req.user._id } }
+      : {};
+
+    const teamMembers = await User.find(userQuery).select('_id name employeeId designation department');
+    const memberIds = teamMembers.map(m => m._id);
+
+    const records = await Attendance.find({ user: { $in: memberIds }, date: today })
+      .populate('user', 'name employeeId designation department');
+
+    // Build result: checked-in members + not-checked-in members
+    const checkedInIds = new Set(records.map(r => r.user._id.toString()));
+    const notCheckedIn = teamMembers
+      .filter(m => !checkedInIds.has(m._id.toString()))
+      .map(m => ({ user: m, checkIn: null, checkOut: null, status: 'Absent' }));
+
+    res.status(200).json([...records, ...notCheckedIn]);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = {
   checkIn: exports.checkIn,
   checkOut: exports.checkOut,
@@ -376,5 +407,6 @@ module.exports = {
   getMonthlyAttendance: exports.getMonthlyAttendance,
   getTodayRecord: exports.getTodayRecord,
   updateAttendanceStatus: exports.updateAttendanceStatus,
-  getTeamAttendanceDashboard: exports.getTeamAttendanceDashboard
+  getTeamAttendanceDashboard: exports.getTeamAttendanceDashboard,
+  getTeamTodayAttendance: exports.getTeamTodayAttendance
 };

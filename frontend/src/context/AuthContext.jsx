@@ -58,7 +58,7 @@ export const AuthProvider = ({ children }) => {
       } else if (userData.kycStatus === 'Pending') {
         navigate('/verification-pending');
       } else if (['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin'].includes(userData.role)) {
-        navigate('/admin');
+        navigate(userData.role === 'Manager' ? '/admin/manager-dashboard' : '/admin');
       } else {
         navigate('/employee');
       }

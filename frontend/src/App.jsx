@@ -16,7 +16,7 @@ import AttendanceManagement from './pages/AttendanceManagement';
 import Leaderboard from './pages/Leaderboard';
 import KPIManagement from './pages/KPIManagement';
 
-// New Pages
+import ManagerDashboard from './pages/ManagerDashboard';
 import KYCForm from './pages/KYCForm';
 import VerificationPending from './pages/VerificationPending';
 import PasswordSetup from './pages/PasswordSetup';
@@ -63,7 +63,8 @@ const RoleBasedRedirect = () => {
   if (user.kycStatus === 'Rejected') return <Navigate to="/kyc-submission" />;
 
   if (user.role === 'Counselling Team') return <Navigate to="/counselling" />;
-  if (['Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin'].includes(user.role)) return <Navigate to="/admin" />;
+  if (user.role === 'Manager') return <Navigate to="/admin/manager-dashboard" />;
+  if (['Admin', 'HR', 'AGM', 'SuperAdmin'].includes(user.role)) return <Navigate to="/admin" />;
   return <Navigate to="/employee" />;
 };
 
@@ -88,6 +89,7 @@ function App() {
           <ProtectedRoute allowedRoles={['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin']}><AdminLayout /></ProtectedRoute>
         }>
           <Route index element={<AdminDashboard />} />
+          <Route path="manager-dashboard" element={<ManagerDashboard />} />
           <Route path="add-employee" element={<AddEmployee />} />
           <Route path="employee/:id" element={<EmployeeDetailAdmin />} />
           <Route path="attendance" element={<Attendance />} />

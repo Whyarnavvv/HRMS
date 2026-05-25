@@ -12,5 +12,6 @@ router.get('/all', protect, authorize('Admin', 'HR', 'AGM'), getAllAttendance);
 router.get('/monthly/:year/:month', protect, getMonthlyAttendance);
 router.patch('/status', protect, authorize('Admin', 'AGM', 'SuperAdmin'), auditLogger({ action: 'UPDATE_STATUS', module: 'ATTENDANCE', targetEntity: 'Attendance' }), updateAttendanceStatus);
 router.get('/team-dashboard', protect, authorize('HR', 'Admin', 'AGM', 'SuperAdmin'), getTeamAttendanceDashboard);
+router.get('/team-today', protect, authorize('Manager', 'HR', 'Admin', 'AGM', 'SuperAdmin'), require('../controllers/attendanceController').getTeamTodayAttendance);
 
 module.exports = router;
