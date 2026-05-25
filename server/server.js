@@ -82,16 +82,6 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-// Temporary: reveal server outbound IP for whitelisting
-app.get('/api/myip', async (req, res) => {
-  const https = require('https');
-  https.get('https://api.ipify.org?format=json', (r) => {
-    let d = '';
-    r.on('data', c => d += c);
-    r.on('end', () => res.json(JSON.parse(d)));
-  }).on('error', () => res.json({ ip: 'unknown' }));
-});
-
 // Routes
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/employees', require('./routes/employeeRoutes'));

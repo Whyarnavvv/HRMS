@@ -1,26 +1,6 @@
 const Task = require('../models/Task');
 const User = require('../models/User');
-const nodemailer = require('nodemailer');
-
-const sendEmail = async (options) => {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
-      console.log('⚠️ Email credentials not set. Simulated email:', options.subject, 'to', options.to);
-      return;
-  }
-  const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: process.env.SMTP_PORT || 587,
-      secure: false, // true for 465, false for other ports
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS
-      }
-  });
-  await transporter.sendMail({
-      from: `"Study Palace Hub HRMS" <${process.env.SMTP_USER}>`,
-      ...options
-  });
-};
+const { sendEmail } = require('../utils/emailService');
 
 // @desc    Create a new task
 // @route   POST /api/tasks
@@ -67,7 +47,7 @@ const createTask = async (req, res) => {
           await sendEmail({
             to: member.email,
             subject: `New Task Assigned: ${title}`,
-            text: emailText
+            html: `<pre style="font-family:sans-serif">${emailText}</pre>`
           }).catch(err => console.error('Failed to send bulk task email:', err));
         }
       }
@@ -84,7 +64,7 @@ const createTask = async (req, res) => {
       await sendEmail({
         to: assignee.email,
         subject: `New Task Assigned: ${title}`,
-        text: emailText
+        html: `<pre style="font-family:sans-serif">${emailText}</pre>`
       }).catch(err => console.error('Failed to send task assignment email:', err));
     }
 
@@ -222,7 +202,7 @@ const updateTask = async (req, res) => {
         await sendEmail({
           to: taskPopulated.assignedBy.email,
           subject: `[Task Update] "${taskPopulated.title}" — ${oldStatus} → ${status}`,
-          text: toManager
+          html: `<pre style="font-family:sans-serif">${toManager}</pre>`
         }).catch(err => console.error('Failed to send status update email to manager:', err));
       }
 
@@ -250,7 +230,7 @@ const updateTask = async (req, res) => {
         await sendEmail({
           to: taskPopulated.assignedTo.email,
           subject: `[Task Update] "${taskPopulated.title}" — ${oldStatus} → ${status}`,
-          text: toAssignee
+          html: `<pre style="font-family:sans-serif">${toAssignee}</pre>`
         }).catch(err => console.error('Failed to send status update email to assignee:', err));
       }
     }
