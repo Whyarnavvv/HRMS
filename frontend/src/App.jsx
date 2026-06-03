@@ -5,12 +5,6 @@ import Login from './pages/Login';
 import Register from './pages/Register';
 import AdminDashboard from './pages/AdminDashboard';
 import ManagerDashboardIndex from './pages/ManagerDashboard';
-
-const DashboardIndex = () => {
-  const { user } = useContext(AuthContext);
-  if (user?.role === 'Manager') return <ManagerDashboardIndex />;
-  return <AdminDashboard />;
-};
 import EmployeeDetailAdmin from './pages/EmployeeDetailAdmin';
 import EmployeeDashboard from './pages/EmployeeDashboard';
 import AdminLayout from './components/AdminLayout';
@@ -22,8 +16,7 @@ import Payroll from './pages/Payroll';
 import AttendanceManagement from './pages/AttendanceManagement';
 import Leaderboard from './pages/Leaderboard';
 import KPIManagement from './pages/KPIManagement';
-
-import ManagerDashboard from './pages/ManagerDashboard';
+import EmployeeKpiDashboard from './pages/EmployeeKpiDashboard';
 import KYCForm from './pages/KYCForm';
 import VerificationPending from './pages/VerificationPending';
 import PasswordSetup from './pages/PasswordSetup';
@@ -40,21 +33,28 @@ import CompanyManagement from './pages/CompanyManagement';
 import CounsellingDashboard from './pages/CounsellingDashboard';
 import VerificationQueue from './pages/VerificationQueue';
 
+const DashboardIndex = () => {
+  const { user } = useContext(AuthContext);
+  if (user?.role === 'Manager') return <ManagerDashboardIndex />;
+  return <AdminDashboard />;
+};
+
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { user } = useContext(AuthContext);
   const location = useLocation();
 
   if (!user) return <Navigate to="/" />;
 
-  // KYC logic for Employees
+  // KYC guards for Employees — enforce before allowedRoles check
   if (user.role === 'Employee' && user.kycStatus !== 'Approved') {
-    if ((user.kycStatus === 'Incomplete' || user.kycStatus === 'Rejected') && location.pathname !== '/kyc-submission') {
-      return <Navigate to="/kyc-submission" />;
+    if (user.kycStatus === 'Incomplete' || user.kycStatus === 'Rejected') {
+      if (location.pathname !== '/kyc-submission') return <Navigate to="/kyc-submission" />;
+      return children; // already on correct page
     }
-    if (user.kycStatus === 'Pending' && location.pathname !== '/verification-pending') {
-      return <Navigate to="/verification-pending" />;
+    if (user.kycStatus === 'Pending') {
+      if (location.pathname !== '/verification-pending') return <Navigate to="/verification-pending" />;
+      return children; // already on correct page — do NOT fall through to allowedRoles
     }
-    // If already on the correct page, or if it's an allowed role mismatch (handled below)
   }
 
   if (allowedRoles && !allowedRoles.includes(user.role)) return <Navigate to="/" />;
@@ -111,6 +111,7 @@ function App() {
           <Route path="audit-logs" element={<AuditLogs />} />
           <Route path="leaderboard" element={<Leaderboard />} />
           <Route path="kpi-management" element={<KPIManagement />} />
+          <Route path="kpi-dashboard" element={<EmployeeKpiDashboard />} />
           <Route path="profile" element={<EmployeeDetailAdmin />} />
           <Route path="wfh-request" element={<WFHRequest />} />
           <Route path="team-attendance" element={<TeamAttendanceDashboard />} />
@@ -127,8 +128,10 @@ function App() {
           <Route path="attendance" element={<Attendance />} />
           <Route path="tasks" element={<TaskManagement />} />
           <Route path="leaderboard" element={<Leaderboard />} />
+          <Route path="kpi-dashboard" element={<EmployeeKpiDashboard />} />
           <Route path="screen-time" element={<ScreenTimeDashboard />} />
           <Route path="wfh-request" element={<WFHRequest />} />
+          <Route path="profile" element={<EmployeeDetailAdmin />} />
         </Route>
 
         {/* Counselling Team standalone layout */}

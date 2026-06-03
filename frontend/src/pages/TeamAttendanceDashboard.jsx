@@ -123,12 +123,11 @@ export default function TeamAttendanceDashboard() {
 
   const calculateLateArrival = (checkInTime) => {
     if (!checkInTime) return false;
-    
+    // Match the system's actual late threshold: 10:15 AM
     const checkIn = new Date(checkInTime);
-    const shiftStart = new Date(checkIn);
-    shiftStart.setHours(9, 0, 0, 0); // 09:00 fallback
-    
-    return checkIn > shiftStart;
+    const lateThreshold = new Date(checkIn);
+    lateThreshold.setHours(10, 15, 0, 0);
+    return checkIn > lateThreshold;
   };
 
   const calculateOvertime = (checkInTime, checkOutTime) => {

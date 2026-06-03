@@ -125,7 +125,13 @@ export default function ScreenTimeTracker() {
         await api.post('/screen-time/heartbeat', { state, durationSeconds });
 
         // Refresh checked-in status every ping
+        const wasCheckedIn = checkedInRef.current;
         checkedInRef.current = await isCheckedIn();
+
+        // If user just checked in during this ping cycle, schedule screenshots
+        if (!wasCheckedIn && checkedInRef.current) {
+          scheduleScreenshots();
+        }
       } catch { /* silent */ } finally {
         isTrackingRef.current = false;
       }

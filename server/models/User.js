@@ -46,6 +46,22 @@ const userSchema = new mongoose.Schema({
   aadhaarBackImage: { type: String },
   employeePhoto: { type: String },
 
+  // Post-verification document uploads
+  documents: {
+    marksheet: { type: String },
+    graduationDegree: { type: String },
+    aadhaarCardFront: { type: String },
+    aadhaarCardBack: { type: String },
+    panCardDoc: { type: String },
+    previousOrgDoc: { type: String },
+    bankPassbook: { type: String }
+  },
+
+  // Upload lock flags — keyed by document field name.
+  // Stored as Mixed so Mongoose persists arbitrary keys without sub-schema issues.
+  // Shape per key: { is_uploaded: Boolean, reupload_allowed: Boolean }
+  documentUploadStatus: { type: mongoose.Schema.Types.Mixed, default: {} },
+
   // Payroll related
   salaryStructure: {
     baseSalary: { type: Number, default: 0 },

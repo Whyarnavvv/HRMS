@@ -85,15 +85,15 @@ const getTasks = async (req, res) => {
     // Employees: see only their assigned tasks
     // Managers/AGM: see tasks they assigned OR tasks assigned to them
     // Admin/HR: see everything
-    
+
     if (req.user.role === 'Employee') {
       query.assignedTo = req.user._id;
     } else if (req.user.role === 'Manager' || req.user.role === 'AGM') {
-      query = { 
+      query = {
         $or: [
-          { assignedBy: req.user._id }, 
+          { assignedBy: req.user._id },
           { assignedTo: req.user._id }
-        ] 
+        ]
       };
     } else if (req.user.role === 'HR' || req.user.role === 'Admin' || req.user.role === 'SuperAdmin') {
        query = {};
@@ -118,7 +118,7 @@ const getTasks = async (req, res) => {
 const updateTask = async (req, res) => {
   try {
     const { status, comment } = req.body;
-    const task = await Task.findById(req.id || req.params.id);
+    const task = await Task.findById(req.params.id);
 
     if (!task) {
       return res.status(404).json({ message: 'Task not found' });
@@ -251,7 +251,7 @@ const deleteTask = async (req, res) => {
 
     if (
       task.assignedBy.toString() !== req.user._id.toString() &&
-      !['Admin', 'SuperAdmin'].includes(req.user.role)
+      !['Admin', 'HR', 'AGM', 'SuperAdmin'].includes(req.user.role)
     ) {
       return res.status(403).json({ message: 'Not authorized to delete this task' });
     }

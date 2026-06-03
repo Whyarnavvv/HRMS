@@ -34,7 +34,8 @@ exports.addHoliday = async (req, res) => {
 // @access  Private (Admin/HR)
 exports.deleteHoliday = async (req, res) => {
   try {
-    await Holiday.findByIdAndDelete(req.params.id);
+    const holiday = await Holiday.findByIdAndDelete(req.params.id);
+    if (!holiday) return res.status(404).json({ message: 'Holiday not found' });
     res.status(200).json({ message: 'Holiday deleted' });
   } catch (error) {
     res.status(500).json({ message: error.message });

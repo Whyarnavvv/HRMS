@@ -163,8 +163,10 @@ export default function AdminDashboard() {
                   <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg"><Activity size={20} /></div>
                   <span className="text-xs font-bold text-slate-400 uppercase tracking-wider">KPI</span>
                </div>
-               <div className="text-3xl font-bold text-slate-900">{stats.netKpi}</div>
-               <div className="text-sm text-slate-500 mt-1">Total Points</div>
+               <div className="text-3xl font-bold text-slate-900">
+                 {employees.reduce((sum, emp) => sum + (emp.totalKpi || 0), 0)}
+               </div>
+               <div className="text-sm text-slate-500 mt-1">Total KPI Points</div>
             </div>
          </div>
 

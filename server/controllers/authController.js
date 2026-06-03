@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { sendEmail } = require('../utils/emailService');
 
 const generateAccessToken = (id) => {
-  return jwt.sign({ id }, process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET, { expiresIn: '7d' });
+  return jwt.sign({ id }, process.env.JWT_ACCESS_SECRET || process.env.JWT_SECRET, { expiresIn: '1d' });
 };
 
 const generateRefreshToken = (id) => {
@@ -19,18 +19,19 @@ const registerUser = async (req, res) => {
 
   try {
     const userExists = await User.findOne({ email });
+    let user;
 
     if (userExists) {
-      if (userExists.isEmailVerified && userExists.password !== 'PENDING_VERIFICATION') {
+      if (userExists.isEmailVerified) {
         return res.status(400).json({ message: 'Email already registered and verified. Please log in.' });
       }
-      // If user exists but unverified, we re-send email
-      var user = userExists;
+      // User exists but hasn't verified yet — allow re-sending the setup email
+      user = userExists;
     } else {
       // Generate random dummy password for initial creation
       const dummyPassword = crypto.randomBytes(16).toString('hex');
 
-      var user = await User.create({
+      user = await User.create({
         name,
         email,
         password: dummyPassword,
@@ -117,7 +118,10 @@ const setupPassword = async (req, res) => {
 // @access  Public
 const checkToken = async (req, res) => {
   try {
-    const user = await User.findOne({ emailVerificationToken: req.params.token });
+    const user = await User.findOne({ 
+      emailVerificationToken: req.params.token,
+      emailVerificationTokenExpire: { $gt: Date.now() }
+    });
     if (!user) return res.status(400).json({ valid: false });
     res.status(200).json({ valid: true, name: user.name, email: user.email });
   } catch (error) {
@@ -172,6 +176,10 @@ const loginUser = async (req, res) => {
       employeeId: u.employeeId || null,
       totalKpi: u.totalKpi || 0,
       kycStatus: u.kycStatus,
+      profilePic: u.profilePic || null,
+      company: u.company || null,
+      isActive: u.isActive,
+      phoneNumber: u.phoneNumber || null,
       ...extra
     });
 
@@ -214,7 +222,7 @@ const forgotPassword = async (req, res) => {
     const user = await User.findOne({ email });
 
     if (!user) {
-      return res.status(404).json({ message: 'There is no user with that email' });
+      return res.status(200).json({ success: true, data: 'If an account with that email exists, a reset link has been sent.' });
     }
 
     // Get reset token

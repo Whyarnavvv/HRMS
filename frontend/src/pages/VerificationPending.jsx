@@ -32,7 +32,7 @@ export default function VerificationPending() {
 
            <div className="space-y-4 pt-4">
               <p className="text-sm text-slate-400 font-bold uppercase tracking-widest flex items-center justify-center gap-2">
-                 <RefreshCcw size={14} className="animate-spin" /> Auto-Refreshing Status
+                 <RefreshCcw size={14} /> Pending HR Review
               </p>
               <p className="text-slate-500 text-sm max-w-sm mx-auto leading-relaxed">
                  You will be automatically logged in as an Employee once the HR team approves your submitted documents and PAN/Aadhaar details.

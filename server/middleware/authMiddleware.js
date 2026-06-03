@@ -32,7 +32,7 @@ const authorize = (...roles) => {
     if (req.user && (req.user.role === 'SuperAdmin' || roles.includes(req.user.role))) {
       next();
     } else {
-      res.status(403).json({ message: `Role ${req.user.role} is not authorized to access this route` });
+      res.status(403).json({ message: `Role ${req.user?.role || 'unknown'} is not authorized to access this route` });
     }
   };
 };

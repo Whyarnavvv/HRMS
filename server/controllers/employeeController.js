@@ -1,7 +1,10 @@
 const User = require('../models/User');
 const Company = require('../models/Company');
+const ReuploadRequest = require('../models/ReuploadRequest');
 const crypto = require('crypto');
 const { sendEmail } = require('../utils/emailService');
+
+const ALLOWED_DOC_KEYS = ['marksheet', 'graduationDegree', 'aadhaarCardFront', 'aadhaarCardBack', 'panCardDoc', 'previousOrgDoc', 'bankPassbook'];
 
 // @desc    Create new employee
 // @route   POST /api/employees
@@ -43,7 +46,8 @@ const createEmployee = async (req, res) => {
       department: department || null,
       designation: designation || null,
       company: company || null,
-      isEmailVerified: true,
+      // isEmailVerified stays false — the setup email below will let them verify
+      isEmailVerified: false,
       kycStatus: 'Incomplete',
       isActive: 'Active'
     };
@@ -105,9 +109,16 @@ const getEmployees = async (req, res) => {
   try {
     const { department, role, search } = req.query;
     let query = {};
+
+    // Hide privileged-role accounts from Employee-level callers
+    const HIDDEN_FROM_EMPLOYEES = ['SuperAdmin', 'Admin', 'AGM', 'HR'];
+    if (req.user && req.user.role === 'Employee') {
+      query.role = { $nin: HIDDEN_FROM_EMPLOYEES };
+    }
     
     if (department) query.department = department;
-    if (role) query.role = role;
+    // Only apply explicit role filter if not already restricted
+    if (role && !(query.role && query.role.$nin)) query.role = role;
     if (search) {
       query.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -151,16 +162,22 @@ const getEmployeeStats = async (req, res) => {
       { $match: { role: { $ne: 'Admin' } } },
       { $group: { _id: '$department', count: { $sum: 1 } } }
     ]);
-    
-    // Upcoming birthdays (within 30 days)
+
+    // Upcoming birthdays within the next 30 days (month/day comparison, year-independent)
     const today = new Date();
-    const nextMonth = new Date();
-    nextMonth.setDate(today.getDate() + 30);
-    
-    const upcomingBirthdays = await User.find({
+    const allWithBirthday = await User.find({
       birthDate: { $exists: true, $ne: null }
-      // Complex logic for birthdays regardless of year usually involves aggregation
     }).select('name birthDate profilePic');
+
+    const upcomingBirthdays = allWithBirthday.filter(emp => {
+      const bday = new Date(emp.birthDate);
+      // Normalise to current year so we can compare day-of-year
+      const thisYear  = new Date(today.getFullYear(), bday.getMonth(), bday.getDate());
+      const nextYear  = new Date(today.getFullYear() + 1, bday.getMonth(), bday.getDate());
+      const inThisYear = thisYear >= today && thisYear <= new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+      const inNextYear = nextYear >= today && nextYear <= new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+      return inThisYear || inNextYear;
+    });
 
     res.status(200).json({
       totalEmployees,
@@ -251,7 +268,17 @@ const updateEmployee = async (req, res) => {
       }
     }
 
-    Object.assign(employee, updates);
+    // Whitelist allowed update fields to prevent mass-assignment
+    const ALLOWED_FIELDS = [
+      'name', 'phoneNumber', 'designation', 'department', 'joiningDate',
+      'birthDate', 'address', 'employeeId', 'panCard', 'bankDetails',
+      'salaryStructure', 'role', 'isActive', 'leavingDate', 'company'
+    ];
+    ALLOWED_FIELDS.forEach(field => {
+      if (updates[field] !== undefined) {
+        employee[field] = updates[field];
+      }
+    });
     await employee.save();
 
     res.status(200).json(employee);
@@ -284,9 +311,6 @@ const submitKYC = async (req, res) => {
 
     // Update File paths from multer
     if (req.files) {
-      if (req.files.panCard) user.panCardImage = `/uploads/${req.files.panCard[0].filename}`;
-      if (req.files.aadhaarFront) user.aadhaarFrontImage = `/uploads/${req.files.aadhaarFront[0].filename}`;
-      if (req.files.aadhaarBack) user.aadhaarBackImage = `/uploads/${req.files.aadhaarBack[0].filename}`;
       if (req.files.photo) user.employeePhoto = `/uploads/${req.files.photo[0].filename}`;
     }
 
@@ -363,33 +387,10 @@ const getCompaniesForDropdown = async (req, res) => {
     const companies = await Company.find({ isActive: true })
       .select('name email phone address')
       .sort({ name: 1 });
-    
     res.status(200).json(companies);
   } catch (error) {
     console.error('Error fetching companies:', error);
-    // If database connection fails, return fallback data for testing
-    if (error.message.includes('ECONNREFUSED') || error.message.includes('timeout')) {
-      console.log('Database connection failed - returning fallback company data');
-      const fallbackCompanies = [
-        {
-          _id: 'fallback-company-1',
-          name: 'Test Company A',
-          email: 'test@companya.com',
-          phone: '+1-555-0001',
-          address: { street: '123 Test St', city: 'Test City', state: 'TS', postalCode: '12345', country: 'India' }
-        },
-        {
-          _id: 'fallback-company-2', 
-          name: 'Test Company B',
-          email: 'test@companyb.com',
-          phone: '+1-555-0002',
-          address: { street: '456 Test Ave', city: 'Test City', state: 'TS', postalCode: '67890', country: 'India' }
-        }
-      ];
-      res.status(200).json(fallbackCompanies);
-    } else {
-      res.status(500).json({ message: error.message });
-    }
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -479,6 +480,130 @@ const verifyEmployee = async (req, res) => {
   }
 };
 
+// @desc    Upload post-verification documents (one-time, locked after upload)
+// @route   POST /api/employees/upload-documents
+// @access  Private (verified employees only)
+const uploadDocuments = async (req, res) => {
+  try {
+    const user = await User.findById(req.user._id);
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    if (!user.isIdVerified) return res.status(403).json({ message: 'Account must be verified before uploading documents.' });
+
+    if (!req.files || Object.keys(req.files).length === 0) {
+      return res.status(400).json({ message: 'No file provided.' });
+    }
+
+    const currentStatus = user.documentUploadStatus || {};
+
+    // Enforce lock BEFORE processing any file — reject entire request if any field is locked
+    for (const field of ALLOWED_DOC_KEYS) {
+      if (!req.files[field]) continue;
+      const s = currentStatus[field] || {};
+      if (s.is_uploaded && !s.reupload_allowed) {
+        return res.status(403).json({
+          message: `Document '${field}' is already uploaded. Request HR approval to re-upload.`
+        });
+      }
+    }
+
+    // Build $set payload for both documents and documentUploadStatus
+    const docUpdates = {};
+    const statusUpdates = {};
+
+    for (const field of ALLOWED_DOC_KEYS) {
+      if (!req.files[field]) continue;
+      docUpdates[`documents.${field}`] = `/uploads/${req.files[field][0].filename}`;
+      statusUpdates[`documentUploadStatus.${field}`] = { is_uploaded: true, reupload_allowed: false };
+    }
+
+    const updated = await User.findByIdAndUpdate(
+      req.user._id,
+      { $set: { ...docUpdates, ...statusUpdates } },
+      { new: true, runValidators: false }
+    ).select('documents documentUploadStatus');
+
+    res.status(200).json({
+      message: 'Documents uploaded successfully',
+      documents: updated.documents,
+      documentUploadStatus: updated.documentUploadStatus
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Request re-upload for a document
+// @route   POST /api/employees/reupload-request
+// @access  Private (Employee)
+const requestReupload = async (req, res) => {
+  try {
+    const { documentKey } = req.body;
+    if (!ALLOWED_DOC_KEYS.includes(documentKey)) {
+      return res.status(400).json({ message: 'Invalid document key.' });
+    }
+
+    const existing = await ReuploadRequest.findOne({
+      employee: req.user._id,
+      documentKey,
+      status: 'PENDING'
+    });
+    if (existing) return res.status(409).json({ message: 'A re-upload request is already pending for this document.' });
+
+    const request = await ReuploadRequest.create({ employee: req.user._id, documentKey });
+    res.status(201).json({ message: 'Re-upload request submitted.', request });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Get all pending re-upload requests
+// @route   GET /api/employees/reupload-requests
+// @access  Private (HR, Admin, AGM, SuperAdmin)
+const getReuploadRequests = async (req, res) => {
+  try {
+    const requests = await ReuploadRequest.find({ status: 'PENDING' })
+      .populate('employee', 'name employeeId department')
+      .sort({ createdAt: -1 });
+    res.status(200).json(requests);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+// @desc    Approve or reject a re-upload request
+// @route   PATCH /api/employees/reupload-requests/:requestId
+// @access  Private (HR, Admin, AGM, SuperAdmin)
+const reviewReuploadRequest = async (req, res) => {
+  try {
+    const { action } = req.body; // 'APPROVE' | 'REJECT'
+    if (!['APPROVE', 'REJECT'].includes(action)) {
+      return res.status(400).json({ message: 'Invalid action. Use APPROVE or REJECT.' });
+    }
+
+    const request = await ReuploadRequest.findById(req.params.requestId);
+    if (!request || request.status !== 'PENDING') {
+      return res.status(404).json({ message: 'Pending request not found.' });
+    }
+
+    request.status = action === 'APPROVE' ? 'APPROVED' : 'REJECTED';
+    request.reviewedBy = req.user._id;
+    request.reviewedAt = new Date();
+    await request.save();
+
+    if (action === 'APPROVE') {
+      await User.findByIdAndUpdate(
+        request.employee,
+        { $set: { [`documentUploadStatus.${request.documentKey}`]: { is_uploaded: true, reupload_allowed: true } } },
+        { runValidators: false }
+      );
+    }
+
+    res.status(200).json({ message: `Request ${action === 'APPROVE' ? 'approved' : 'rejected'}.`, request });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
 module.exports = { 
   createEmployee,
   getEmployees, 
@@ -492,6 +617,10 @@ module.exports = {
   submitKYC, 
   reviewKYC,
   updateEmployeeCompany,
-  getCompaniesForDropdown
+  getCompaniesForDropdown,
+  uploadDocuments,
+  requestReupload,
+  getReuploadRequests,
+  reviewReuploadRequest
 };
 

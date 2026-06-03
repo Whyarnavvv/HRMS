@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import api from '../utils/axios';
+import api, { baseURL } from '../utils/axios';
 import { Users, Search, Filter, Cake, Briefcase, Mail, Phone, ExternalLink } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
@@ -137,7 +137,7 @@ export default function EmployeeManagement() {
               <div className="h-20 bg-slate-50 relative">
                  <div className="absolute -bottom-10 left-6">
                     {emp.profilePic ? (
-                      <img src={emp.profilePic} className="w-20 h-20 rounded-2xl border-4 border-white object-cover shadow-sm" alt="" />
+                      <img src={`${baseURL}${emp.profilePic}`} className="w-20 h-20 rounded-2xl border-4 border-white object-cover shadow-sm" alt="" />
                     ) : (
                       <div className="w-20 h-20 rounded-2xl border-4 border-white bg-blue-100 flex items-center justify-center text-blue-600 font-bold text-2xl shadow-sm">
                         {emp.name.charAt(0)}

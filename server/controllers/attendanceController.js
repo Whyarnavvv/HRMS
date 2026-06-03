@@ -23,12 +23,15 @@ exports.checkIn = async (req, res) => {
     }
 
     const checkInTime = new Date();
-    // Default Late threshold: 10:15 AM
-    const lateThreshold = new Date();
-    lateThreshold.setHours(10, 15, 0);
+
+    // Late threshold: 10:15 AM IST
+    // Use explicit IST offset (+5:30) to be timezone-safe regardless of server location
+    const nowIST = new Date(checkInTime.toLocaleString('en-US', { timeZone: 'Asia/Kolkata' }));
+    const lateThresholdIST = new Date(nowIST);
+    lateThresholdIST.setHours(10, 15, 0, 0);
 
     let status = 'Present';
-    if (checkInTime > lateThreshold) {
+    if (nowIST > lateThresholdIST) {
       status = 'Late';
     }
 
@@ -163,14 +166,24 @@ exports.checkOut = async (req, res) => {
     attendance.totalHours = parseFloat(hours.toFixed(2));
 
     // Handle minor shortfalls (>= 8.5) and half-days
+    // Preserve the original Late status — only override if truly a half-day
+    const wasLate = attendance.status === 'Late';
     if (attendance.totalHours >= 8.5) {
-       if (attendance.status === 'Late') {
-          attendance.status = 'Present'; // Waiver for completing hours despite being late
-          attendance.note = (attendance.note ? attendance.note + ' | ' : '') + 'Late waived: completed full hours';
-       }
+      if (wasLate) {
+        // Waiver: completed full hours despite being late
+        attendance.status = 'Present';
+        attendance.note = (attendance.note ? attendance.note + ' | ' : '') + 'Late waived: completed full hours';
+      }
+      // else: status stays Present — no change needed
     } else {
-       attendance.status = 'Half-day';
-       attendance.note = (attendance.note ? attendance.note + ' | ' : '') + 'Half-day due to shortfall in hours';
+      // Less than 8.5h worked
+      if (wasLate) {
+        // Keep Late AND note the shortfall — don't overwrite to Half-day
+        attendance.note = (attendance.note ? attendance.note + ' | ' : '') + 'Short hours but marked Late';
+      } else {
+        attendance.status = 'Half-day';
+        attendance.note = (attendance.note ? attendance.note + ' | ' : '') + 'Half-day due to shortfall in hours';
+      }
     }
 
     await attendance.save();
@@ -305,23 +318,30 @@ exports.getTeamAttendanceDashboard = async (req, res) => {
       dateFilter.date = new Date().toISOString().split('T')[0];
     }
 
-    // Build attendance query
-    let attendanceQuery = Attendance.find(dateFilter)
-      .populate('user', 'name employeeId department designation');
-
-    // Apply filters
+    // If department filter is set, resolve matching user IDs first
+    // (populate with match silently nullifies non-matching users causing wrong stats)
+    let userIdFilter = null;
     if (department && department !== 'all') {
-      attendanceQuery = attendanceQuery.populate({
-        path: 'user',
-        match: { department: department }
-      });
+      const User = require('../models/User');
+      const usersInDept = await User.find({ department }).select('_id');
+      userIdFilter = usersInDept.map(u => u._id);
+    }
+
+    // Build base attendance query
+    let attendanceQuery = Attendance.find(dateFilter);
+
+    // Apply user ID filter from department pre-lookup
+    if (userIdFilter !== null) {
+      attendanceQuery = attendanceQuery.where('user').in(userIdFilter);
     }
 
     if (status && status !== 'all') {
       attendanceQuery = attendanceQuery.where('status').equals(status);
     }
 
-    const attendanceRecords = await attendanceQuery.sort({ date: -1 });
+    const attendanceRecords = await attendanceQuery
+      .populate('user', 'name employeeId department designation')
+      .sort({ date: -1 });
 
     // Filter by employee name if search is provided
     let filteredRecords = attendanceRecords;

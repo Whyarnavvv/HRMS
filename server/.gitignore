@@ -10,9 +10,11 @@ logs
 npm-debug.log*
 yarn-debug.log*
 
-# Uploads
-uploads/*
-!uploads/.gitkeep
+# Uploads — keep tracked so images deploy correctly
+# NOTE: For production, migrate to cloud storage (S3/Cloudinary) to avoid
+# ephemeral filesystem loss on server restarts/redeploys.
+# uploads/*
+# !uploads/.gitkeep
 
 # Editor directories and files
 .vscode/*

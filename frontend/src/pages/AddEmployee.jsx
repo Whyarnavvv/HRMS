@@ -52,7 +52,7 @@ export default function AddEmployee() {
       await api.post('/employees', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      navigate('/admin');
+      navigate('/admin/employees');
     } catch (error) {
       alert(error.response?.data?.message || 'Failed to add employee');
     } finally {
@@ -117,6 +117,7 @@ export default function AddEmployee() {
                       <option value="Manager">Manager</option>
                       <option value="HR">HR</option>
                       <option value="AGM">AGM</option>
+                      <option value="Counselling Team">Counselling Team</option>
                    </select>
                 </div>
                 <div>

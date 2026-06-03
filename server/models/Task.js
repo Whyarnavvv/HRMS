@@ -5,6 +5,8 @@ const taskSchema = new mongoose.Schema({
   description: { type: String },
   assignedTo: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   assignedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  department: { type: String }, // team/department this task belongs to
+  assignmentType: { type: String, enum: ['individual', 'team'], default: 'individual' },
   status: { 
     type: String, 
     enum: ['Pending', 'In Progress', 'Completed', 'Review'],

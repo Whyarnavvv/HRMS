@@ -6,22 +6,30 @@ const APPROVER_ROLES = ['SuperAdmin', 'AGM', 'Admin'];
 
 export default function WFHApprovals() {
   const { user } = useContext(AuthContext);
+
+  // All hooks declared before any conditional return (Rules of Hooks)
   const [records, setRecords] = useState([]);
   const [locationMap, setLocationMap] = useState({});
-
-  if (!APPROVER_ROLES.includes(user?.role)) {
-    return <p className="text-slate-500 p-6">You are not authorized to view WFH approvals.</p>;
-  }
+  const [error, setError] = useState('');
 
   const load = async () => {
-    const { data } = await api.get('/wfh-requests');
-    setRecords(data || []);
+    try {
+      const { data } = await api.get('/wfh-requests');
+      setRecords(data || []);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to load WFH requests');
+    }
   };
 
   useEffect(() => { load(); }, []);
 
+  // Conditional render AFTER all hooks
+  if (!APPROVER_ROLES.includes(user?.role)) {
+    return <p className="text-slate-500 p-6">You are not authorized to view WFH approvals.</p>;
+  }
+
   const fetchLocation = async (id) => {
-    if (locationMap[id]) return; // already fetched
+    if (locationMap[id]) return;
     try {
       const { data } = await api.get(`/wfh-requests/${id}/employee-location`);
       setLocationMap((prev) => ({ ...prev, [id]: data }));
@@ -31,18 +39,34 @@ export default function WFHApprovals() {
   };
 
   const approve = async (id) => {
-    await api.patch(`/wfh-requests/${id}/approve`, {});
-    await load();
+    try {
+      await api.patch(`/wfh-requests/${id}/approve`, {});
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to approve request');
+    }
   };
 
   const reject = async (id) => {
-    await api.patch(`/wfh-requests/${id}/reject`, {});
-    await load();
+    try {
+      await api.patch(`/wfh-requests/${id}/reject`, {});
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to reject request');
+    }
   };
 
   return (
     <div className="space-y-6">
       <h1 className="text-xl sm:text-2xl font-bold text-slate-800">WFH Request Approvals</h1>
+
+      {error && (
+        <div className="p-4 bg-red-50 border border-red-100 text-red-600 rounded-2xl text-sm font-bold">
+          {error}
+          <button onClick={() => setError('')} className="ml-3 underline text-xs">Dismiss</button>
+        </div>
+      )}
+
       <div className="bg-white border rounded-2xl overflow-hidden">
         <div className="overflow-x-auto">
         <table className="w-full text-left">
@@ -91,8 +115,15 @@ export default function WFHApprovals() {
                     )}
                   </td>
                   <td className="px-4 py-3 flex gap-2">
-                    <button onClick={() => approve(r._id)} className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold">Approve</button>
-                    <button onClick={() => reject(r._id)} className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-semibold">Reject</button>
+                    {r.status === 'PENDING' && (
+                      <>
+                        <button onClick={() => approve(r._id)} className="px-3 py-1 bg-emerald-100 text-emerald-700 rounded-lg text-xs font-semibold">Approve</button>
+                        <button onClick={() => reject(r._id)} className="px-3 py-1 bg-red-100 text-red-700 rounded-lg text-xs font-semibold">Reject</button>
+                      </>
+                    )}
+                    {r.status !== 'PENDING' && (
+                      <span className="text-xs text-slate-400 font-semibold italic">Reviewed</span>
+                    )}
                   </td>
                 </tr>
               );

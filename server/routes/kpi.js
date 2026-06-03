@@ -1,10 +1,12 @@
 const express = require('express');
-const router = express.Router();
+const router  = express.Router();
 const {
   manageKpi,
   getKpiHistory,
   getLeaderboard,
   getMonthlyLeaderboard,
+  getYearlyLeaderboard,
+  getMyKpiDashboard,
   getEmployeeOfMonth,
   getEmployeeOfYear,
   getYearlyIncrement,
@@ -13,14 +15,28 @@ const {
 } = require('../controllers/kpiController');
 const { protect, authorize } = require('../middleware/authMiddleware');
 
+// Manual KPI management (privileged roles only)
 router.post('/manage', protect, authorize('Admin', 'HR', 'AGM', 'SuperAdmin'), manageKpi);
+
+// KPI history — any authenticated user can view; controller handles visibility
 router.get('/history/:employeeId', protect, getKpiHistory);
-router.get('/leaderboard', protect, getLeaderboard);
-router.get('/monthly-leaderboard', protect, getMonthlyLeaderboard);
+
+// Leaderboards
+router.get('/leaderboard',          protect, getLeaderboard);          // all-time
+router.get('/monthly-leaderboard',  protect, getMonthlyLeaderboard);   // ?month=&year=
+router.get('/yearly-leaderboard',   protect, getYearlyLeaderboard);    // ?year=
+
+// Employee KPI dashboard (self-service + admin view)
+// Employees: own stats only. Admins/HR/AGM: any employee via ?employeeId=
+router.get('/my-dashboard', protect, getMyKpiDashboard);
+
+// Awards
 router.get('/employee-of-month', protect, getEmployeeOfMonth);
-router.get('/employee-of-year', protect, getEmployeeOfYear);
+router.get('/employee-of-year',  protect, getEmployeeOfYear);
+
+// Yearly increment & max-points config (privileged only)
 router.get('/yearly-increment', protect, authorize('Admin', 'HR', 'AGM', 'SuperAdmin'), getYearlyIncrement);
-router.get('/yearly-max', protect, authorize('Admin', 'HR', 'AGM', 'SuperAdmin'), getYearlyMaxKpi);
-router.put('/yearly-max', protect, authorize('Admin', 'HR', 'AGM', 'SuperAdmin'), setYearlyMaxKpi);
+router.get('/yearly-max',       protect, authorize('Admin', 'HR', 'AGM', 'SuperAdmin'), getYearlyMaxKpi);
+router.put('/yearly-max',       protect, authorize('Admin', 'HR', 'AGM', 'SuperAdmin'), setYearlyMaxKpi);
 
 module.exports = router;

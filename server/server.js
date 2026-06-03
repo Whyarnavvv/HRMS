@@ -38,7 +38,26 @@ app.use(cors({
 }));
 app.use(express.json());
 app.use(cookieParser());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// Serve uploaded files with explicit CORS headers so images load from any
+// allowed frontend origin (Vercel, LAN, localhost).
+// crossOriginResourcePolicy in helmet is already "cross-origin" but we
+// add the header here explicitly for maximum browser compatibility.
+app.use('/uploads', (req, res, next) => {
+  const origin = req.headers.origin;
+  const allowed = [
+    process.env.CLIENT_URL,
+    process.env.FRONTEND_URL,
+    'http://localhost:5173',
+    'http://localhost:3000',
+  ].filter(Boolean);
+  const isLAN = /^http:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.)/.test(origin);
+  if (!origin || allowed.includes(origin) || isLAN) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
+  }
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  next();
+}, express.static(path.join(__dirname, 'uploads')));
 
 // Connect Database with retry logic
 const connectWithRetry = async (attempt = 1) => {
@@ -51,8 +70,6 @@ const connectWithRetry = async (attempt = 1) => {
       serverSelectionTimeoutMS: 10000,
       socketTimeoutMS: 45000,
     });
-    console.log('✅ MongoDB Connected');
-
     console.log('✅ MongoDB Connected');
 
   } catch (err) {
@@ -97,7 +114,6 @@ app.use('/api/screen-time', require('./routes/screenTimeRoutes'));
 app.use('/api/audit-logs', require('./routes/auditLogRoutes'));
 app.use('/api/companies', require('./routes/companyRoutes'));
 app.use('/api/counselling', require('./routes/counsellingRoutes'));
-app.use('/uploads/screenshots', require('express').static(require('path').join(__dirname, 'uploads', 'screenshots')));
 
 
 const PORT = process.env.PORT || 5000;

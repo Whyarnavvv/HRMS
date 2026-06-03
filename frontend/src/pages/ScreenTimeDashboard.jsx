@@ -59,7 +59,19 @@ export default function ScreenTimeDashboard() {
 
   useEffect(() => { load(); loadConfig(); }, []);
 
-  const BACKEND = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
+  // Derive backend base URL safely — strips only the /api path suffix, not any /api in the hostname
+  const BACKEND = (() => {
+    const raw = import.meta.env.VITE_API_URL || import.meta.env.VITE_API_BASE_URL || '';
+    if (!raw) return `http://${window.location.hostname}:5000`;
+    try {
+      const url = new URL(raw);
+      // Remove trailing /api or /api/ from pathname only
+      url.pathname = url.pathname.replace(/\/api\/?$/, '');
+      return url.origin + (url.pathname === '/' ? '' : url.pathname);
+    } catch {
+      return raw.replace(/\/api\/?$/, '');
+    }
+  })();
 
   return (
     <div className="space-y-6">
@@ -140,7 +152,7 @@ export default function ScreenTimeDashboard() {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2">
                           {r.user?.profilePic
-                            ? <img src={`${BACKEND}/uploads/${r.user.profilePic}`} className="w-7 h-7 rounded-lg object-cover" alt="" />
+                            ? <img src={`${BACKEND}${r.user.profilePic}`} className="w-7 h-7 rounded-lg object-cover" alt="" />
                             : <div className="w-7 h-7 rounded-lg bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-black">{r.user?.name?.charAt(0)}</div>
                           }
                           <div>

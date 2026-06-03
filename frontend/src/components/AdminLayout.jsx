@@ -36,6 +36,7 @@ const menuGroups = [
       { name: 'My Tasks', path: '/admin/tasks', icon: <ListTodo size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
       { name: 'Salary Slips', path: '/admin/my-payroll', icon: <FileText size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
       { name: 'KPI Leaderboard', path: '/admin/leaderboard', icon: <Award size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
+      { name: 'My KPI Dashboard', path: '/admin/kpi-dashboard', icon: <Award size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
       { name: 'WFH Request', path: '/admin/wfh-request', icon: <Home size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
       { name: 'Screen Time', path: '/admin/screen-time', icon: <Monitor size={18} />, roles: ['SuperAdmin'] },
       { name: 'Call Logs', path: '/counselling', icon: <Phone size={18} />, roles: ['Counselling Team'] },
@@ -160,7 +161,7 @@ function SidebarContent({ user, navigate, location, logout, birthdays }) {
       </nav>
 
       <div className="pt-6 mt-6 border-t border-slate-800 space-y-1">
-        <button onClick={() => navigate('/settings')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-white/5 transition-all text-sm font-bold">
+        <button onClick={() => navigate('/admin/geofences')} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-white/5 transition-all text-sm font-bold">
           <Settings size={18} /> Settings
         </button>
         <button onClick={logout} className="w-full flex items-center gap-3.5 px-4 py-3 rounded-2xl hover:bg-red-500/10 hover:text-red-400 transition-all text-sm font-bold">

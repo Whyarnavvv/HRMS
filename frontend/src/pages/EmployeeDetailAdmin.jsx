@@ -1,9 +1,10 @@
-import { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
-import api from '../utils/axios';
+import api, { baseURL } from '../utils/axios';
 import { AuthContext } from '../context/AuthContext';
+import DocumentUpload from './DocumentUpload';
 import {
    ArrowLeft,
    Trash2,
@@ -21,7 +22,9 @@ import {
    Building2,
    Download,
    UserX,
-   UserCheck
+   UserCheck,
+   RefreshCw,
+   AlertCircle
 } from 'lucide-react';
 
 export default function EmployeeDetailAdmin() {
@@ -52,10 +55,7 @@ export default function EmployeeDetailAdmin() {
 
    const fetchData = async () => {
       try {
-         console.log('Fetching employee data for ID:', targetId);
-         
          if (!targetId) {
-            console.error('No target ID available');
             alert('No employee ID specified');
             return;
          }
@@ -92,11 +92,9 @@ export default function EmployeeDetailAdmin() {
             const kpiRes = await api.get(`/kpi/history/${targetId}`);
             setHistory(kpiRes.data || []);
          } else {
-            console.error('Employee data not found in response:', res.data);
             alert('Employee data not found');
          }
       } catch (error) {
-         console.error('Error fetching employee data:', error);
          alert('Failed to load employee details: ' + (error.response?.data?.message || error.message));
       }
    };
@@ -110,7 +108,7 @@ export default function EmployeeDetailAdmin() {
       setLoading(true);
       try {
          await api.post('/kpi/manage', {
-            employeeId: id,
+            employeeId: targetId,   // use targetId — handles both /employee/:id and /profile routes
             date: date.toISOString(),
             points: Number(pointValue),
             reason
@@ -216,7 +214,11 @@ export default function EmployeeDetailAdmin() {
       </div>
    );
 
-   const baseUrl = api.defaults.baseURL.replace(/\/api$/, '');
+   // Always use the full backend origin for image URLs so they resolve correctly
+   // in both localhost and LAN/production. In dev, baseURL = http://localhost:5000
+   // (or http://192.168.x.x:5000 on LAN). In prod, baseURL = https://your-app.onrender.com
+   // This removes the dependency on the Vite /uploads proxy for image rendering.
+   const baseUrl = baseURL;
 
    return (
       <>
@@ -325,10 +327,9 @@ export default function EmployeeDetailAdmin() {
             <div className="lg:col-span-2 bg-white rounded-2xl sm:rounded-[2.5rem] p-5 sm:p-8 lg:p-10 shadow-sm border border-slate-200/60 flex flex-col md:flex-row items-center gap-6 sm:gap-10">
                <div className="relative group">
                   {employee.employeePhoto || employee.profilePic ? (
-                     <img
+                     <ProfilePhoto
                         src={`${baseUrl}${employee.employeePhoto || employee.profilePic}`}
-                        alt={employee.name}
-                        className="w-28 h-28 sm:w-40 sm:h-40 rounded-2xl sm:rounded-[2.5rem] object-cover border-4 border-slate-50 shadow-xl"
+                        name={employee.name}
                      />
                   ) : (
                      <div className="w-28 h-28 sm:w-40 sm:h-40 rounded-2xl sm:rounded-[2.5rem] bg-slate-100 flex items-center justify-center text-3xl sm:text-5xl font-black text-slate-300">
@@ -518,13 +519,12 @@ export default function EmployeeDetailAdmin() {
                   KYC Verification Vault
                </h3>
 
-               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-6">
-                  <DocPreview label="PAN Card" src={employee.panCardImage} baseUrl={baseUrl} />
-                  <DocPreview label="Aadhaar Front" src={employee.aadhaarFrontImage} baseUrl={baseUrl} />
-                  <DocPreview label="Aadhaar Back" src={employee.aadhaarBackImage} baseUrl={baseUrl} />
+               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-2 gap-4 sm:gap-6">
+                  <DocPreview label="Employee Photo" src={employee.employeePhoto} baseUrl={baseUrl} />
+                  <DocPreview label="PAN Card No." src={null} baseUrl={baseUrl} textFallback={employee.panCard} />
                </div>
 
-               {(!employee.panCardImage && !employee.aadhaarFrontImage) && (
+               {(!employee.employeePhoto) && (
                   <div className="text-center py-10 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
                      <ShieldCheck size={32} className="mx-auto text-slate-300 mb-2" />
                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">No Documents Uploaded Yet</p>
@@ -556,6 +556,17 @@ export default function EmployeeDetailAdmin() {
                </div>
             </div>
          </div>
+
+         {/* Post-Verification Document Upload */}
+         <DocumentUpload
+           employee={employee}
+           onUploaded={(docs, docStatus) => setEmployee(prev => ({ ...prev, documents: docs, documentUploadStatus: docStatus }))}
+         />
+
+         {/* HR: Re-upload Requests Panel */}
+         {['Admin', 'HR', 'AGM', 'SuperAdmin'].includes(currentUser?.role) && id && (
+           <ReuploadRequestsPanel employeeId={id} />
+         )}
 
          {/* KPI Management & History (Bottom Section) */}
          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
@@ -696,8 +707,41 @@ export default function EmployeeDetailAdmin() {
    );
 }
 
-function DocPreview({ label, src, baseUrl }) {
-   if (!src) return (
+function ProfilePhoto({ src, name }) {
+   const [broken, setBroken] = React.useState(false);
+   if (broken) return (
+      <div className="w-28 h-28 sm:w-40 sm:h-40 rounded-2xl sm:rounded-[2.5rem] bg-slate-100 flex items-center justify-center text-3xl sm:text-5xl font-black text-slate-300">
+         {name?.charAt(0)}
+      </div>
+   );
+   return (
+      <img
+         src={src}
+         alt={name}
+         onError={() => setBroken(true)}
+         className="w-28 h-28 sm:w-40 sm:h-40 rounded-2xl sm:rounded-[2.5rem] object-cover border-4 border-slate-50 shadow-xl"
+      />
+   );
+}
+
+function DocPreview({ label, src, baseUrl, textFallback }) {
+   const [broken, setBroken] = React.useState(false);
+
+   const resolvedSrc = src
+     ? (src.startsWith('http') ? src : `${baseUrl}${src.startsWith('/') ? '' : '/'}${src}`)
+     : null;
+
+   if (textFallback && !resolvedSrc) return (
+      <div className="space-y-3">
+         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{label}</p>
+         <div className="aspect-[4/3] bg-slate-50 rounded-3xl border border-slate-100 flex flex-col items-center justify-center p-4 gap-2">
+            <ShieldCheck size={20} className="text-emerald-400" />
+            <span className="text-xs font-black text-slate-700 uppercase tracking-widest">{textFallback}</span>
+         </div>
+      </div>
+   );
+
+   if (!resolvedSrc || broken) return (
       <div className="aspect-[4/3] bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 flex flex-col items-center justify-center p-4">
          <ShieldCheck size={20} className="text-slate-300 mb-1" />
          <span className="text-[10px] font-black text-slate-300 uppercase tracking-widest">{label} Missing</span>
@@ -709,12 +753,13 @@ function DocPreview({ label, src, baseUrl }) {
          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">{label}</p>
          <div className="group relative aspect-[4/3] rounded-3xl overflow-hidden shadow-sm border border-slate-100 bg-slate-50">
             <img
-               src={`${baseUrl}${src}`}
+               src={resolvedSrc}
                alt={label}
+               onError={() => setBroken(true)}
                className="w-full h-full object-cover transition-transform group-hover:scale-110 cursor-zoom-in"
             />
             <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-               <a href={`${baseUrl}${src}`} target="_blank" rel="noreferrer" className="bg-white text-slate-900 p-3 rounded-2xl shadow-xl">
+               <a href={resolvedSrc} target="_blank" rel="noreferrer" className="bg-white text-slate-900 p-3 rounded-2xl shadow-xl">
                   <Download size={18} />
                </a>
             </div>
@@ -730,4 +775,89 @@ function DataBox({ label, value }) {
          <p className="text-sm font-bold text-slate-700 bg-slate-50 p-4 rounded-2xl border border-slate-100">{value}</p>
       </div>
    );
+}
+
+const DOC_LABELS = {
+  marksheet: '10th / 12th Marksheet',
+  graduationDegree: 'Graduation Degree',
+  aadhaarCardFront: 'Aadhaar Card (Front)',
+  aadhaarCardBack: 'Aadhaar Card (Back)',
+  panCardDoc: 'PAN Card',
+  previousOrgDoc: 'Previous Organization Document',
+  bankPassbook: 'Bank Passbook'
+};
+
+function ReuploadRequestsPanel({ employeeId }) {
+  const [requests, setRequests] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [acting, setActing] = useState({});
+  const [msg, setMsg] = useState('');
+
+  const fetchRequests = async () => {
+    try {
+      const { data } = await api.get('/employees/reupload-requests');
+      setRequests(data.filter(r => r.employee?._id === employeeId || r.employee === employeeId));
+    } catch (_) {}
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { fetchRequests(); }, [employeeId]);
+
+  const handleAction = async (requestId, action) => {
+    setActing(prev => ({ ...prev, [requestId]: true }));
+    setMsg('');
+    try {
+      await api.patch(`/employees/reupload-requests/${requestId}`, { action });
+      setMsg(`Request ${action === 'APPROVE' ? 'approved' : 'rejected'} successfully.`);
+      fetchRequests();
+    } catch (err) {
+      setMsg(err.response?.data?.message || 'Action failed.');
+    } finally {
+      setActing(prev => ({ ...prev, [requestId]: false }));
+    }
+  };
+
+  if (loading || requests.length === 0) return null;
+
+  return (
+    <div className="bg-white rounded-2xl sm:rounded-[2.5rem] shadow-sm border border-amber-100 p-5 sm:p-8 space-y-4">
+      <h3 className="text-base font-black text-slate-900 flex items-center gap-3">
+        <div className="p-2 bg-amber-50 text-amber-500 rounded-xl"><RefreshCw size={18} /></div>
+        Pending Re-upload Requests
+      </h3>
+      {msg && (
+        <div className="flex items-center gap-2 p-3 bg-blue-50 text-blue-700 rounded-xl text-xs font-bold">
+          <AlertCircle size={14} /> {msg}
+        </div>
+      )}
+      <div className="space-y-3">
+        {requests.map(r => (
+          <div key={r._id} className="flex items-center justify-between gap-4 p-4 bg-slate-50 rounded-2xl border border-slate-100">
+            <div>
+              <p className="text-sm font-bold text-slate-800">{DOC_LABELS[r.documentKey] || r.documentKey}</p>
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                Requested {new Date(r.createdAt).toLocaleDateString()}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleAction(r._id, 'APPROVE')}
+                disabled={acting[r._id]}
+                className="px-4 py-2 bg-emerald-600 text-white text-xs font-bold rounded-xl hover:bg-emerald-700 transition disabled:opacity-50"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => handleAction(r._id, 'REJECT')}
+                disabled={acting[r._id]}
+                className="px-4 py-2 bg-white border border-red-100 text-red-500 text-xs font-bold rounded-xl hover:bg-red-50 transition disabled:opacity-50"
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
 }

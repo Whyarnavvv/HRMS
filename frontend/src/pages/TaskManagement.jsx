@@ -67,8 +67,9 @@ export default function TaskManagement() {
     ? (user.department ? [user.department] : [])
     : COMPANY_TEAMS;
 
+  // Only show active employees in the assignment dropdown
   const filteredEmployees = selectedTeam
-    ? employees.filter((emp) => emp.department === selectedTeam)
+    ? employees.filter((emp) => emp.department === selectedTeam && emp.isActive === 'Active')
     : [];
 
   const createTask = async (e) => {
@@ -113,9 +114,10 @@ export default function TaskManagement() {
     }
   };
 
-  // Status options per role — Employee can move to In Progress or In Review only
+  // Status options per role
+  // Employees can only move to 'In Progress' or 'Review' — NOT Pending (backend blocks it anyway)
   const statusOptions = () => {
-    if (user.role === 'Employee') return ['Pending', 'In Progress', 'Review'];
+    if (user.role === 'Employee') return ['In Progress', 'Review'];
     return ['Pending', 'In Progress', 'Review', 'Completed'];
   };
 

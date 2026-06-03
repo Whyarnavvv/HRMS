@@ -7,5 +7,14 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    proxy: {
+      // Proxy /uploads requests to the backend so images load in dev
+      // regardless of what baseURL the frontend uses
+      '/uploads': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false,
+      }
+    }
   }
 })

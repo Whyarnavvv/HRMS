@@ -69,11 +69,11 @@ const countAttendanceInRange = async (userId, startDate, endDate) => {
     const record    = attendanceMap[dateStr];
 
     if (record) {
-      if (record.status === 'Present')      presentDays  += 1;
-      else if (record.status === 'Late')    { presentDays += 1; lateDays += 1; }
+      if (record.status === 'Present')       presentDays  += 1;
+      else if (record.status === 'Late')     { presentDays += 1; lateDays += 1; }
       else if (record.status === 'Half-day') { presentDays += 0.5; halfDays += 1; }
-      else if (record.status === 'Paid Leave') paidLeaves += 1;
-      else if (!isSunday && !isHoliday)    unpaidLeaves += 1;
+      else if (record.status === 'Paid Leave') { presentDays += 1; paidLeaves += 1; } // paid leave = present for salary
+      else if (!isSunday && !isHoliday)      unpaidLeaves += 1;
     } else if (!isSunday && !isHoliday) {
       unpaidLeaves += 1;
     }
@@ -155,12 +155,22 @@ const generateMonthlyPayroll = async (req, res) => {
         status: payroll?.status || 'Draft'
       };
 
-      // Re-apply existing manual adjustments
+      // Re-apply existing manual adjustments and keep totalDeductions in sync
       if (payroll?.adjustments?.length) {
+        let manualDeductionTotal = 0;
         payroll.adjustments.forEach(adj => {
           const amt = toNonNegativeNumber(adj.amount);
-          payrollData.netSalary += adj.type === 'Addition' ? amt : -amt;
+          if (adj.type === 'Addition') {
+            payrollData.netSalary += amt;
+          } else {
+            payrollData.netSalary -= amt;
+            manualDeductionTotal += amt;
+          }
         });
+        // totalDeductions = auto deductions + all manual deductions
+        payrollData.totalDeductions = parseFloat(
+          (absentDeduction + halfDayDeduction + manualDeductionTotal).toFixed(2)
+        );
         payrollData.netSalary = Math.max(0, parseFloat(payrollData.netSalary.toFixed(2)));
       }
 
@@ -409,7 +419,6 @@ module.exports = {
   getPayrollById,
   getPayrollPDF,
   sharePayrollEmail,
-  generateSalarySlipPDF,
   getPayrollCalendar
 };
 

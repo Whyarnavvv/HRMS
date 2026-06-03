@@ -263,12 +263,16 @@ export default function Payroll({ personal = false }) {
 
   useEffect(() => { fetchData(); }, [filter]);
 
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 4 }, (_, i) => currentYear - 1 + i);
+
   const fetchData = async () => {
     try {
       setLoading(true);
       if (isHRAdmin) {
-        const res = await api.post('/payroll/generate', filter);
-        setPayrolls(res.data.results || []);
+        // Do NOT auto-generate payroll on page load or filter change.
+        // Only load supporting data (slip requests + calendar).
+        // Payroll records populate only after the user clicks "Generate Payroll".
         const reqRes = await api.get('/salary-slip-requests');
         setSlipRequests(reqRes.data || []);
         const calRes = await api.get(`/payroll/calendar?month=${filter.month}&year=${filter.year}`);
@@ -406,7 +410,7 @@ export default function Payroll({ personal = false }) {
               value={filter.year}
               onChange={(e) => setFilter({ ...filter, year: parseInt(e.target.value) })}
             >
-              {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
             <button
               onClick={generatePayroll}
@@ -710,7 +714,7 @@ export default function Payroll({ personal = false }) {
                   value={requestForm.year}
                   onChange={(e) => setRequestForm({ ...requestForm, year: parseInt(e.target.value) })}
                 >
-                  {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                  {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
               <button

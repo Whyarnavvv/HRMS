@@ -271,7 +271,7 @@ export default function EmployeeDashboard() {
                       </div>
                       <div className="text-slate-300 group-hover:text-slate-600 transition-all">→</div>
                    </div>
-                   <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between group cursor-pointer" onClick={() => navigate('/')}>
+                   <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm flex items-center justify-between group cursor-pointer" onClick={() => navigate('/admin/leaderboard')}>
                       <div className="flex items-center gap-4">
                          <div className="p-3 bg-amber-50 text-amber-600 rounded-2xl group-hover:bg-amber-600 group-hover:text-white transition-all"><Award size={20} /></div>
                          <div>

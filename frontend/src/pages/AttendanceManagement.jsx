@@ -164,6 +164,8 @@ export default function AttendanceManagement() {
   // Calendar Helpers
   const daysInMonth = new Date(year, month, 0).getDate();
   const calendarDays = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const currentYear = new Date().getFullYear();
+  const yearOptions = Array.from({ length: 4 }, (_, i) => currentYear - 1 + i);
 
   if (selectedEmp) {
     return (
@@ -195,7 +197,7 @@ export default function AttendanceManagement() {
               value={year}
               onChange={(e) => setYear(parseInt(e.target.value))}
             >
-              {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+              {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
             </select>
           </div>
         </div>
@@ -425,7 +427,7 @@ export default function AttendanceManagement() {
                   value={year}
                   onChange={(e) => setYear(parseInt(e.target.value))}
                 >
-                  {[2024, 2025, 2026].map(y => <option key={y} value={y}>{y}</option>)}
+                  {yearOptions.map(y => <option key={y} value={y}>{y}</option>)}
                 </select>
               </div>
             )}

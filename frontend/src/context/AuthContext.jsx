@@ -67,17 +67,12 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const register = async (name, email, password) => {
+  const register = async (name, email) => {
     try {
-      const { data } = await api.post('/auth/register', { name, email, password });
-      const { accessToken, refreshToken, ...userData } = data;
-      if (accessToken) {
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', refreshToken);
-      }
-      localStorage.setItem('user', JSON.stringify(userData));
-      setUser(userData);
-      navigate('/employee');
+      // Register only sends name+email — backend initiates the email verification flow
+      // No tokens are returned at this stage; user must verify email first
+      await api.post('/auth/register', { name, email });
+      // Don't set user or navigate — the Register page handles the success state
     } catch (error) {
       throw error.response?.data?.message || 'Registration failed';
     }
@@ -97,7 +92,14 @@ export const AuthProvider = ({ children }) => {
     navigate('/');
   };
 
-  if (!authReady) return null;
+  if (!authReady) return (
+    <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="flex flex-col items-center gap-3">
+        <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Loading...</p>
+      </div>
+    </div>
+  );
 
   return (
     <AuthContext.Provider value={{ user, login, register, logout }}>

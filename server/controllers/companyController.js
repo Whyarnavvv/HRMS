@@ -11,39 +11,10 @@ const getCompanies = async (req, res) => {
     const companies = await Company.find({ isActive: true })
       .populate('createdBy', 'name email')
       .sort({ createdAt: -1 });
-    
     res.status(200).json(companies);
   } catch (error) {
     console.error('Error fetching companies:', error);
-    // Handle database connection errors gracefully
-    if (error.message.includes('ECONNREFUSED') || error.message.includes('timeout')) {
-      console.log('Database connection failed - returning fallback company data');
-      const fallbackCompanies = [
-        {
-          _id: 'fallback-company-1',
-          name: 'Test Company A',
-          email: 'test@companya.com',
-          phone: '+1-555-0001',
-          address: { street: '123 Test St', city: 'Test City', state: 'TS', postalCode: '12345', country: 'India' },
-          isActive: true,
-          createdAt: new Date(),
-          createdBy: { _id: 'fallback-user', name: 'System', email: 'system@test.com' }
-        },
-        {
-          _id: 'fallback-company-2', 
-          name: 'Test Company B',
-          email: 'test@companyb.com',
-          phone: '+1-555-0002',
-          address: { street: '456 Test Ave', city: 'Test City', state: 'TS', postalCode: '67890', country: 'India' },
-          isActive: true,
-          createdAt: new Date(),
-          createdBy: { _id: 'fallback-user', name: 'System', email: 'system@test.com' }
-        }
-      ];
-      res.status(200).json(fallbackCompanies);
-    } else {
-      res.status(500).json({ message: error.message });
-    }
+    res.status(500).json({ message: error.message });
   }
 };
 
@@ -117,15 +88,6 @@ const createCompany = async (req, res) => {
     }
 
     const company = await Company.create(companyData);
-    
-    // If this is the first company, update all existing users to belong to this company
-    const companyCount = await Company.countDocuments();
-    if (companyCount === 1) {
-      await User.updateMany(
-        { company: { $exists: false } },
-        { company: company._id }
-      );
-    }
 
     const populatedCompany = await Company.findById(company._id)
       .populate('createdBy', 'name email');

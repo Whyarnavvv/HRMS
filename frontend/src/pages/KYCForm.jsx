@@ -1,12 +1,10 @@
 import { useState, useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom';
 import api from '../utils/axios';
-import { FileText, Camera, CreditCard, Home, Phone, MapPin, UploadCloud, AlertCircle } from 'lucide-react';
+import { FileText, Camera, Home, Phone, MapPin, UploadCloud, AlertCircle } from 'lucide-react';
 
 export default function KYCForm() {
-  const { user, login } = useContext(AuthContext); // We've logged in partially, but need to re-login or update user object after KYC success
-  const navigate = useNavigate();
+  const { user } = useContext(AuthContext);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -24,35 +22,25 @@ export default function KYCForm() {
     panCard: ''
   });
 
-  const [files, setFiles] = useState({
-    panCard: null,
-    aadhaarFront: null,
-    aadhaarBack: null,
-    photo: null
-  });
-
-  const [previews, setPreviews] = useState({
-    panCard: null,
-    aadhaarFront: null,
-    aadhaarBack: null,
-    photo: null
-  });
-
+  const [photoFile, setPhotoFile] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
   const [submitted, setSubmitted] = useState(false);
 
   const handleInputChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleFileChange = (e) => {
+  const handlePhotoChange = (e) => {
     const file = e.target.files[0];
-    setFiles({ ...files, [e.target.name]: file });
-    
-    // Generate preview
-    if (file && file.type.startsWith('image/')) {
-       const url = URL.createObjectURL(file);
-       setPreviews(prev => ({ ...prev, [e.target.name]: url }));
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) {
+      setError('Image size must be less than 2 MB.');
+      e.target.value = '';
+      return;
     }
+    setError('');
+    setPhotoFile(file);
+    setPhotoPreview(URL.createObjectURL(file));
   };
 
   const handleSubmit = async (e) => {
@@ -62,19 +50,16 @@ export default function KYCForm() {
 
     const data = new FormData();
     Object.keys(formData).forEach(key => data.append(key, formData[key]));
-    
-    // Add bankDetails as object
+
     const bankDetails = {
-       accountHolder: formData.bankAccount,
-       accountNumber: formData.accountNumber,
-       ifsc: formData.ifsc,
-       bankName: formData.bankName
+      accountHolder: formData.bankAccount,
+      accountNumber: formData.accountNumber,
+      ifsc: formData.ifsc,
+      bankName: formData.bankName
     };
     data.append('bankDetails', JSON.stringify(bankDetails));
 
-    Object.keys(files).forEach(key => {
-      if (files[key]) data.append(key, files[key]);
-    });
+    if (photoFile) data.append('photo', photoFile);
 
     try {
       await api.post('/employees/submit-kyc', data, {
@@ -103,6 +88,8 @@ export default function KYCForm() {
            <button 
               onClick={() => {
                 localStorage.removeItem('user');
+                localStorage.removeItem('accessToken');
+                localStorage.removeItem('refreshToken');
                 window.location.href = '/';
               }}
               className="w-full bg-slate-900 text-white font-bold py-5 rounded-2xl hover:bg-slate-800 transition shadow-xl shadow-slate-200"
@@ -160,12 +147,10 @@ export default function KYCForm() {
                         className="w-full bg-slate-50 border border-slate-100 rounded-2xl py-4 px-5 focus:ring-2 focus:ring-blue-500 transition-all outline-none"
                      >
                         <option value="">Select Department</option>
-                        <option value="IT">IT</option>
-                        <option value="HR">HR</option>
                         <option value="Marketing">Marketing</option>
-                        <option value="Sales">Sales</option>
-                        <option value="Operations">Operations</option>
-                        <option value="Finance">Finance</option>
+                        <option value="Admission">Admission</option>
+                        <option value="Accounts">Accounts</option>
+                        <option value="Counselling">Counselling</option>
                         <option value="Management">Management</option>
                      </select>
                   </div>
@@ -190,17 +175,14 @@ export default function KYCForm() {
                </div>
             </div>
 
-            {/* Documents Upload */}
+            {/* Photograph Upload */}
             <div className="space-y-6">
                <h3 className="text-xl font-bold flex items-center gap-3 text-slate-800">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><CreditCard size={18} /></div>
-                  Identification Documents
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center"><Camera size={18} /></div>
+                  Photograph
                </h3>
-               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <UploadBox label="PAN Card Image" name="panCard" onChange={handleFileChange} preview={previews.panCard} />
-                  <UploadBox label="Photograph" name="photo" onChange={handleFileChange} preview={previews.photo} />
-                  <UploadBox label="Aadhaar Card (Front)" name="aadhaarFront" onChange={handleFileChange} preview={previews.aadhaarFront} />
-                  <UploadBox label="Aadhaar Card (Back)" name="aadhaarBack" onChange={handleFileChange} preview={previews.aadhaarBack} />
+               <div className="max-w-xs">
+                  <UploadBox label="Employee Photograph" name="photo" onChange={handlePhotoChange} preview={photoPreview} required />
                </div>
             </div>
 
@@ -246,7 +228,7 @@ export default function KYCForm() {
   );
 }
 
-function UploadBox({ label, name, onChange, preview }) {
+function UploadBox({ label, name, onChange, preview, required }) {
    return (
       <div className="group">
          <label className="block text-sm font-bold text-slate-600 mb-2 ml-1">{label}</label>
@@ -255,7 +237,8 @@ function UploadBox({ label, name, onChange, preview }) {
                type="file" 
                name={name} 
                onChange={onChange}
-               required
+               required={required}
+               accept="image/jpeg,image/jpg,image/png,image/webp"
                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
             />
             <div className="bg-slate-50 border-2 border-dashed border-slate-200 rounded-[2rem] p-8 flex flex-col items-center justify-center transition-all group-hover:border-blue-300 group-hover:bg-blue-50/50 min-h-[160px] relative overflow-hidden">
@@ -267,7 +250,7 @@ function UploadBox({ label, name, onChange, preview }) {
                         <UploadCloud size={24} />
                      </div>
                      <p className="text-sm font-bold text-slate-500 group-hover:text-blue-600">Click to Upload</p>
-                     <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-widest">JPEG, PNG, PDF</p>
+                     <p className="text-[10px] text-slate-400 mt-1 uppercase font-bold tracking-widest">JPG, PNG, WEBP • Max 2 MB</p>
                   </>
                )}
             </div>

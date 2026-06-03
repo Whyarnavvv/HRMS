@@ -5,15 +5,22 @@ const numberToWords = (num) => {
   if (num === 0) return 'Zero Only';
   const a = ['','One','Two','Three','Four','Five','Six','Seven','Eight','Nine','Ten','Eleven','Twelve','Thirteen','Fourteen','Fifteen','Sixteen','Seventeen','Eighteen','Nineteen'];
   const b = ['','','Twenty','Thirty','Forty','Fifty','Sixty','Seventy','Eighty','Ninety'];
-  let n = ('000000000' + Math.floor(num)).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
-  if (!n) return '';
+
+  const safeNum = Math.floor(Math.abs(num));
+  // Pad to 11 digits to handle up to ₹99,99,99,999 (well above any salary)
+  const padded = ('00000000000' + safeNum).slice(-11);
+  const n = padded.match(/^(\d{2})(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+  if (!n) return safeNum.toString() + ' Only';
+
   let str = '';
-  str += (n[1] != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + ' Crore ' : '';
-  str += (n[2] != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + ' Lakh ' : '';
-  str += (n[3] != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + ' Thousand ' : '';
-  str += (n[4] != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + ' Hundred ' : '';
-  str += (n[5] != 0) ? ((str != '') ? '' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) + ' Only' : ' Only';
-  return str.replace(/\s+/g, ' ').trim();
+  // n[1] = hundred crores, n[2] = crores, n[3] = lakhs, n[4] = thousands, n[5] = hundreds, n[6] = last two
+  if (Number(n[1]) !== 0) str += (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + ' Hundred Crore ';
+  if (Number(n[2]) !== 0) str += (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + ' Crore ';
+  if (Number(n[3]) !== 0) str += (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + ' Lakh ';
+  if (Number(n[4]) !== 0) str += (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + ' Thousand ';
+  if (Number(n[5]) !== 0) str += (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) + ' Hundred ';
+  if (Number(n[6]) !== 0) str += (a[Number(n[6])] || b[n[6][0]] + ' ' + a[n[6][1]]);
+  return (str.trim() + ' Only').replace(/\s+/g, ' ').trim();
 };
 
 const renderCompanyHeader = (doc, companyData) => {
@@ -177,7 +184,7 @@ const generateSalarySlipPDF = async (payroll) => {
     curY += 18;
 
     const netPay = Math.round(p.netSalary);
-    const perDay = (totalE / p.workingDays).toFixed(7);
+    const perDay = (p.dailyRate || (totalE / (p.workingDays || 1))).toFixed(7);
 
     drawGridLines(tableY, curY + 18 * 3);
 

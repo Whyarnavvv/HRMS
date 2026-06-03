@@ -8,6 +8,33 @@ export default function CounsellingDashboard() {
   const isCounselling = user?.role === 'Counselling Team';
   const isSuperAdmin  = user?.role === 'SuperAdmin';
 
+  // All hooks must be declared before any conditional return
+  const [logs, setLogs]             = useState([]);
+  const [showForm, setShowForm]     = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm]             = useState({ phoneNumber: '', callSummary: '', remarks: '' });
+  const [file, setFile]             = useState(null);
+
+  // Derive backend base URL safely — avoids breaking if path contains multiple /api segments
+  const BACKEND = (() => {
+    const raw = import.meta.env.VITE_API_URL || '';
+    if (!raw) return 'http://localhost:5000';
+    const url = new URL(raw.startsWith('http') ? raw : `http://${raw}`);
+    return `${url.protocol}//${url.host}`;
+  })();
+
+  const load = async () => {
+    try {
+      const endpoint = isSuperAdmin ? '/counselling' : '/counselling/my';
+      const { data } = await api.get(endpoint);
+      setLogs(data || []);
+    } catch (err) {
+      console.error('Failed to load counselling logs:', err);
+    }
+  };
+
+  useEffect(() => { load(); }, []);
+
   if (!isCounselling && !isSuperAdmin) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-3 text-slate-400">
@@ -16,24 +43,6 @@ export default function CounsellingDashboard() {
       </div>
     );
   }
-
-  const [logs, setLogs]           = useState([]);
-  const [showForm, setShowForm]   = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [form, setForm]           = useState({ phoneNumber: '', callSummary: '', remarks: '' });
-  const [file, setFile]           = useState(null);
-
-  const BACKEND = import.meta.env.VITE_API_URL?.replace('/api', '') || 'http://localhost:5000';
-
-  const load = async () => {
-    try {
-      const endpoint = isSuperAdmin ? '/counselling' : '/counselling/my';
-      const { data } = await api.get(endpoint);
-      setLogs(data || []);
-    } catch {}
-  };
-
-  useEffect(() => { load(); }, []);
 
   const submit = async (e) => {
     e.preventDefault();

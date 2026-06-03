@@ -1,7 +1,7 @@
 import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../context/AuthContext';
-import api from '../utils/axios';
+import api, { baseURL } from '../utils/axios';
 import {
   Building2,
   Plus,
@@ -235,7 +235,7 @@ export default function CompanyManagement() {
       employeeCount: company.employeeCount || ''
     });
     
-    setLogoPreview(company.logo ? `/uploads/${company.logo}` : '');
+    setLogoPreview(company.logo ? `${baseURL}/uploads/${company.logo}` : '');
     setLogoFile(null);
     setShowModal(true);
   };
@@ -392,7 +392,7 @@ export default function CompanyManagement() {
                         <div className="flex items-center">
                           {company.logo ? (
                             <img
-                              src={`/uploads/${company.logo}`}
+                              src={`${baseURL}/uploads/${company.logo}`}
                               alt={company.name}
                               className="w-10 h-10 rounded-lg object-cover mr-3"
                             />
