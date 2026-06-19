@@ -11,7 +11,11 @@ const attendanceSchema = new mongoose.Schema({
     enum: ['Present', 'Absent', 'Late', 'Half-day', 'Paid Leave', 'Unpaid Leave'],
     default: 'Absent'
   },
-  note: { type: String }
+  note: { type: String },
+  // Coordinates recorded at check-in — used to validate check-out location
+  // Optional/nullable for backward compatibility with existing records
+  checkInLatitude:  { type: Number, default: null },
+  checkInLongitude: { type: Number, default: null },
 }, { timestamps: true });
 
 // Ensure one attendance record per user per day

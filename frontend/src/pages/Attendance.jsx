@@ -1,10 +1,11 @@
 import { useState, useEffect, useContext, useRef } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import api from '../utils/axios';
+import KpiCelebrationPopup from '../components/KpiCelebrationPopup';
 import {
   Clock, ChevronLeft, ChevronRight, CheckCircle,
   AlertCircle, XCircle, Calendar as CalendarIcon,
-  TrendingUp, X, Star, Zap
+  TrendingUp, X
 } from 'lucide-react';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -41,7 +42,7 @@ export default function Attendance() {
   const [history, setHistory]               = useState([]);
   const [allAttendance, setAllAttendance]   = useState([]);
   const [loading, setLoading]               = useState(true);
-  const [officeSettings, setOfficeSettings] = useState(null);
+  const [officeSettings, setOfficeSettings] = useState(null); // kept for legacy reference
   const [locationError, setLocationError]   = useState('');
   const [verifyingLocation, setVerifyingLocation] = useState(false);
   const [lastGeofence, setLastGeofence]     = useState(null);
@@ -104,7 +105,10 @@ export default function Attendance() {
       setTodayRecord(data);
       setLastGeofence(data.geofence || null);
       fetchData(); fetchMonthRecords();
-    } catch (err) { alert(err.response?.data?.message || 'Check-in failed'); }
+    } catch (err) {
+      // Show the backend's error message — it has the accurate distance and reason
+      setLocationError(err.response?.data?.message || 'Check-in failed');
+    }
   };
 
   const verifyLocationAndCheckIn = () => {
@@ -115,32 +119,49 @@ export default function Attendance() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude, accuracy } = pos.coords;
-        if (!officeSettings?.radius) {
-          handleCheckIn({ latitude, longitude, accuracy }); setVerifyingLocation(false); return;
-        }
-        const dist = calculateDistance(latitude, longitude, officeSettings.latitude, officeSettings.longitude);
-        if (dist <= officeSettings.radius) {
-          handleCheckIn({ latitude, longitude, accuracy });
-        } else {
-          setLocationError(`You are ${Math.round(dist)}m away from the office. Check-in not allowed.`);
-        }
+        // Send coordinates to backend — backend is the source of truth for geofence validation
+        handleCheckIn({ latitude, longitude, accuracy });
         setVerifyingLocation(false);
       },
-      () => { setLocationError('Unable to get location. Enable permissions.'); setVerifyingLocation(false); },
+      () => { setLocationError('Unable to get location. Enable location permissions.'); setVerifyingLocation(false); },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
 
   const handleCheckOut = async () => {
-    try {
-      const { data } = await api.post('/attendance/check-out');
-      setTodayRecord(data);
-      // Show celebration if KPI points were awarded
-      if (data.kpiAwarded && data.kpiAwarded.length > 0) {
-        setKpiCelebration(data.kpiAwarded);
-      }
-      fetchData(); fetchMonthRecords();
-    } catch (err) { alert(err.response?.data?.message || 'Check-out failed'); }
+    setLocationError('');
+    setVerifyingLocation(true);
+
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation not supported by your browser.');
+      setVerifyingLocation(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        setVerifyingLocation(false);
+        try {
+          const { data } = await api.post('/attendance/check-out', {
+            latitude:  pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          });
+          setTodayRecord(data);
+          if (data.kpiAwarded && data.kpiAwarded.length > 0) {
+            setKpiCelebration(data.kpiAwarded);
+          }
+          fetchData(); fetchMonthRecords();
+        } catch (err) {
+          const msg = err.response?.data?.message || 'Check-out failed';
+          setLocationError(msg);
+        }
+      },
+      () => {
+        setVerifyingLocation(false);
+        setLocationError('Unable to get location. Please enable location permissions.');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   // ── derived stats ──
@@ -229,12 +250,20 @@ export default function Attendance() {
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Checked in</p>
                 <p className="text-sm font-black text-slate-700">{fmtTime(todayRecord.checkIn)}</p>
               </div>
-              <button
-                onClick={handleCheckOut}
-                className="flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm transition shadow-lg"
-              >
-                <Clock size={16} /> Check Out
-              </button>
+              <div className="flex flex-col items-end gap-1.5">
+                <button
+                  onClick={handleCheckOut}
+                  disabled={verifyingLocation}
+                  className="flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm transition shadow-lg disabled:opacity-50"
+                >
+                  <Clock size={16} /> {verifyingLocation ? 'Locating...' : 'Check Out'}
+                </button>
+                {locationError && (
+                  <p className="text-xs text-red-500 font-bold flex items-center gap-1 max-w-xs text-right">
+                    <AlertCircle size={12} className="shrink-0" /> {locationError}
+                  </p>
+                )}
+              </div>
             </div>
           ) : (
             <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-100 text-emerald-700 px-5 py-3 rounded-2xl font-black text-sm">
@@ -520,68 +549,10 @@ export default function Attendance() {
         </div>
       )}
       {/* ── KPI Celebration Popup ── */}
-      {kpiCelebration && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
-
-            {/* Confetti header */}
-            <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-purple-600 p-8 text-center relative overflow-hidden">
-              {/* Decorative circles */}
-              <div className="absolute top-0 left-0 w-32 h-32 bg-white/10 rounded-full -translate-x-16 -translate-y-16" />
-              <div className="absolute bottom-0 right-0 w-24 h-24 bg-white/10 rounded-full translate-x-12 translate-y-12" />
-
-              <div className="relative z-10">
-                <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 border-4 border-white/30">
-                  <Star size={36} className="text-yellow-300" fill="currentColor" />
-                </div>
-                <p className="text-white/80 text-xs font-black uppercase tracking-[0.3em] mb-1">KPI Points Awarded</p>
-                <p className="text-5xl font-black text-white">
-                  +{kpiCelebration.reduce((sum, k) => sum + k.points, 0)}
-                </p>
-                <p className="text-white/70 text-sm font-bold mt-1">points earned today</p>
-              </div>
-            </div>
-
-            {/* Breakdown */}
-            <div className="p-6 space-y-3">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Breakdown</p>
-              {kpiCelebration.map((k, i) => (
-                <div key={i} className={`flex items-center justify-between p-3 rounded-2xl ${
-                  k.kpiType === 'punctuality' ? 'bg-emerald-50 border border-emerald-100' : 'bg-blue-50 border border-blue-100'
-                }`}>
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-xl ${
-                      k.kpiType === 'punctuality' ? 'bg-emerald-100 text-emerald-600' : 'bg-blue-100 text-blue-600'
-                    }`}>
-                      {k.kpiType === 'punctuality' ? <Clock size={14} /> : <Zap size={14} />}
-                    </div>
-                    <div>
-                      <p className={`text-xs font-black ${
-                        k.kpiType === 'punctuality' ? 'text-emerald-700' : 'text-blue-700'
-                      }`}>
-                        {k.kpiType === 'punctuality' ? 'Punctuality' : 'Working Hours'}
-                      </p>
-                      <p className="text-[10px] text-slate-500 font-bold mt-0.5 max-w-[180px] leading-tight">{k.reason}</p>
-                    </div>
-                  </div>
-                  <span className={`text-lg font-black ${
-                    k.kpiType === 'punctuality' ? 'text-emerald-600' : 'text-blue-600'
-                  }`}>+{k.points}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="px-6 pb-6">
-              <button
-                onClick={() => setKpiCelebration(null)}
-                className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm transition"
-              >
-                Awesome! 🎉
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <KpiCelebrationPopup
+        kpiAwarded={kpiCelebration}
+        onClose={() => setKpiCelebration(null)}
+      />
     </div>
   );
 }

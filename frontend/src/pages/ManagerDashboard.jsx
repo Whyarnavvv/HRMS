@@ -2,6 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/axios';
 import { AuthContext } from '../context/AuthContext';
+import KpiCelebrationPopup from '../components/KpiCelebrationPopup';
 import {
   Clock, Calendar as CalendarIcon, CheckCircle, Award, ListTodo,
   FileText, LogOut, Trophy, TrendingUp, Users, CheckCheck, AlertCircle
@@ -33,6 +34,7 @@ export default function ManagerDashboard() {
   const [teamAttendance, setTeamAttendance]   = useState([]);
   const [teamTasks, setTeamTasks]             = useState([]);
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
+  const [kpiCelebration, setKpiCelebration]   = useState(null);
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -88,15 +90,27 @@ export default function ManagerDashboard() {
   };
 
   const handleCheckOut = async () => {
-    try {
-      await api.post('/attendance/check-out');
-      setShowCheckOutModal(false);
-      alert('Checked out successfully!');
-      fetchAll();
-    } catch (err) {
-      setShowCheckOutModal(false);
-      alert(err.response?.data?.message || 'Check-out failed');
-    }
+    if (!navigator.geolocation) return alert('Geolocation not supported');
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { data } = await api.post('/attendance/check-out', {
+            latitude:  pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          });
+          setShowCheckOutModal(false);
+          fetchAll();
+          if (data.kpiAwarded && data.kpiAwarded.length > 0) {
+            setKpiCelebration(data.kpiAwarded);
+          }
+        } catch (err) {
+          setShowCheckOutModal(false);
+          alert(err.response?.data?.message || 'Check-out failed');
+        }
+      },
+      () => alert('Enable location permissions.'),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   // Team task summary
@@ -106,6 +120,7 @@ export default function ManagerDashboard() {
   }, {});
 
   return (
+    <>
     <div className="min-h-screen bg-slate-50">
       {/* Top Navbar */}
       <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center sticky top-0 z-30">
@@ -352,7 +367,7 @@ export default function ManagerDashboard() {
                   <p className="text-sm font-bold text-slate-800 truncate">{task.title}</p>
                   <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">
                     Assigned to: {task.assignedTo?.name || '—'}
-                    {task.deadline && ` • Due: ${new Date(task.deadline).toLocaleDateString()}`}
+                    {task.deadline && (` • Due: ${new Date(task.deadline).toLocaleDateString()}`)}
                   </p>
                 </div>
                 <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex-shrink-0 ${task.priority === 'High' ? 'bg-red-100 text-red-600' : task.priority === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500'}`}>
@@ -454,5 +469,11 @@ export default function ManagerDashboard() {
         </div>
       )}
     </div>
+
+    <KpiCelebrationPopup
+      kpiAwarded={kpiCelebration}
+      onClose={() => setKpiCelebration(null)}
+    />
+    </>
   );
 }

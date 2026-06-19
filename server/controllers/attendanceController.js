@@ -115,6 +115,8 @@ exports.checkIn = async (req, res) => {
     if (existing) {
       existing.checkIn = checkInTime;
       existing.status = status;
+      existing.checkInLatitude  = Number(latitude);
+      existing.checkInLongitude = Number(longitude);
       existing.note = geofenceMeta.validated
         ? `Check-in validated by ${geofenceMeta.mode} geofence`
         : existing.note;
@@ -130,6 +132,8 @@ exports.checkIn = async (req, res) => {
       date: today,
       checkIn: checkInTime,
       status: status,
+      checkInLatitude:  Number(latitude),
+      checkInLongitude: Number(longitude),
       note: geofenceMeta.validated ? `Check-in validated by ${geofenceMeta.mode} geofence` : undefined
     });
 
@@ -145,40 +149,96 @@ exports.checkIn = async (req, res) => {
 // @desc    Check-out for today
 // @route   POST /api/attendance/check-out
 // @access  Private (Employee)
+//
+// Body: { latitude, longitude }
+// Backend validates that the employee is within the permitted radius of their
+// original check-in location before allowing check-out.
 exports.checkOut = async (req, res) => {
   try {
+    const { latitude, longitude } = req.body || {};
+
+    // ── Require coordinates ──────────────────────────────────────────────────
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({
+        message: 'latitude and longitude are required for check-out'
+      });
+    }
+
     const today = new Date().toISOString().split('T')[0];
     const attendance = await Attendance.findOne({ user: req.user._id, date: today });
 
+    // ── Must have checked in today ───────────────────────────────────────────
     if (!attendance || !attendance.checkIn) {
       return res.status(400).json({ message: 'No check-in record found for today' });
     }
 
+    // ── Prevent duplicate checkout ───────────────────────────────────────────
     if (attendance.checkOut) {
       return res.status(400).json({ message: 'Already checked out today' });
     }
 
+    // ── Geolocation validation ───────────────────────────────────────────────
+    // Use the stored check-in coordinates as the reference point.
+    // If coordinates were recorded at check-in, validate against them using the
+    // same geofence radius from Settings. This is the exact same logic as check-in.
+    if (
+      attendance.checkInLatitude !== null &&
+      attendance.checkInLatitude !== undefined &&
+      attendance.checkInLongitude !== null &&
+      attendance.checkInLongitude !== undefined
+    ) {
+      // Load the active geofence radius (same source as check-in)
+      const settings = await Settings.findOne({ name: 'GlobalSettings' });
+      const defaultZone = settings?.geofenceZones?.find(
+        (z) => settings.defaultZoneId && z._id.toString() === settings.defaultZoneId.toString()
+      );
+      const officeLocation = defaultZone || settings?.officeLocation;
+      const geofenceRadius = Number(officeLocation?.radius) || 0;
+
+      if (geofenceRadius > 0) {
+        // Compare current location against the stored check-in location
+        const checkoutCheck = isWithinRadius(
+          { latitude, longitude },
+          { latitude: attendance.checkInLatitude, longitude: attendance.checkInLongitude },
+          geofenceRadius
+        );
+
+        if (!checkoutCheck.isInside) {
+          // Log the failed attempt in the attendance note for audit purposes
+          const failNote = `Check-out attempt rejected: ${Math.round(checkoutCheck.distanceMeters)}m from check-in location (max ${geofenceRadius}m)`;
+          attendance.note = (attendance.note ? attendance.note + ' | ' : '') + failNote;
+          // Save the note without completing checkout so there is an audit trail
+          await attendance.save();
+
+          return res.status(403).json({
+            message: 'You can only check out from the same location where you checked in.',
+            distanceMeters: Math.round(checkoutCheck.distanceMeters),
+            allowedRadius: geofenceRadius
+          });
+        }
+      }
+    }
+    // If checkInLatitude/Longitude are null (old records created before this change),
+    // skip location validation and allow check-out — backward compatibility.
+
+    // ── Record check-out ─────────────────────────────────────────────────────
     attendance.checkOut = new Date();
-    
+
     // Calculate total hours
     const diff = attendance.checkOut - attendance.checkIn;
     const hours = diff / (1000 * 60 * 60);
     attendance.totalHours = parseFloat(hours.toFixed(2));
 
-    // Handle minor shortfalls (>= 8.5) and half-days
+    // Handle status based on hours worked
     // Preserve the original Late status — only override if truly a half-day
     const wasLate = attendance.status === 'Late';
     if (attendance.totalHours >= 8.5) {
       if (wasLate) {
-        // Waiver: completed full hours despite being late
         attendance.status = 'Present';
         attendance.note = (attendance.note ? attendance.note + ' | ' : '') + 'Late waived: completed full hours';
       }
-      // else: status stays Present — no change needed
     } else {
-      // Less than 8.5h worked
       if (wasLate) {
-        // Keep Late AND note the shortfall — don't overwrite to Half-day
         attendance.note = (attendance.note ? attendance.note + ' | ' : '') + 'Short hours but marked Late';
       } else {
         attendance.status = 'Half-day';
@@ -188,8 +248,10 @@ exports.checkOut = async (req, res) => {
 
     await attendance.save();
     await stopScreenSession(req.user._id, today);
+
     // Auto-calculate punctuality & working hours KPI
     const kpiAwarded = await autoCalculateKpi(req.user._id, attendance);
+
     // Return attendance + any KPI points awarded so frontend can show celebration
     res.status(200).json({ ...attendance.toObject(), kpiAwarded });
   } catch (error) {

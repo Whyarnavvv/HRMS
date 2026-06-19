@@ -23,7 +23,11 @@ import {
   Menu,
   X,
   Building2,
-  Phone
+  Phone,
+  Package,
+  History,
+  KeyRound,
+  FileBarChart2
 } from 'lucide-react';
 
 const menuGroups = [
@@ -37,8 +41,10 @@ const menuGroups = [
       { name: 'Salary Slips', path: '/admin/my-payroll', icon: <FileText size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
       { name: 'KPI Leaderboard', path: '/admin/leaderboard', icon: <Award size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
       { name: 'My KPI Dashboard', path: '/admin/kpi-dashboard', icon: <Award size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
-      { name: 'WFH Request', path: '/admin/wfh-request', icon: <Home size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
-      { name: 'Screen Time', path: '/admin/screen-time', icon: <Monitor size={18} />, roles: ['SuperAdmin'] },
+      { name: 'WFH Request',       path: '/admin/wfh-request',   icon: <Home size={18} />,          roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
+      { name: 'My Assets',         path: '/admin/my-assets',       icon: <Package  size={18} />, roles: ['Employee', 'Manager'] },
+      { name: 'My Credentials',   path: '/admin/my-credentials',  icon: <KeyRound size={18} />, roles: ['Admin', 'HR', 'Manager', 'Employee', 'AGM', 'SuperAdmin'] },
+      { name: 'Screen Time',       path: '/admin/screen-time',   icon: <Monitor size={18} />,        roles: ['SuperAdmin'] },
       { name: 'Call Logs', path: '/counselling', icon: <Phone size={18} />, roles: ['Counselling Team'] },
     ]
   },
@@ -57,6 +63,11 @@ const menuGroups = [
       { name: 'Verification Queue', path: '/admin/verification-queue', icon: <ShieldCheck size={18} />, roles: ['Admin', 'HR', 'AGM', 'SuperAdmin'] },
       { name: 'Geofences', path: '/admin/geofences', icon: <MapPin size={18} />, roles: ['Admin', 'AGM', 'SuperAdmin'] },
       { name: 'WFH Approvals', path: '/admin/wfh-approvals', icon: <Home size={18} />, roles: ['Admin', 'AGM', 'SuperAdmin'] },
+      { name: 'Asset Inventory',   path: '/admin/assets',            icon: <Package      size={18} />, roles: ['Admin', 'HR', 'AGM', 'Manager', 'SuperAdmin'] },
+      { name: 'Asset Assignments', path: '/admin/asset-assignments', icon: <UserPlus     size={18} />, roles: ['Admin', 'HR', 'AGM', 'Manager', 'SuperAdmin'] },
+      { name: 'Asset History',     path: '/admin/asset-history',     icon: <History      size={18} />, roles: ['Admin', 'HR', 'AGM', 'Manager', 'SuperAdmin'] },
+      { name: 'Asset Reports',     path: '/admin/asset-reports',     icon: <FileBarChart2 size={18} />, roles: ['Admin', 'HR', 'AGM', 'Manager', 'SuperAdmin'] },
+      { name: 'Credential Audit',  path: '/admin/credential-audit',  icon: <KeyRound     size={18} />, roles: ['SuperAdmin', 'Admin', 'HR'] },
       { name: 'Company Management', path: '/admin/companies', icon: <Building2 size={18} />, roles: ['SuperAdmin'] },
       { name: 'Audit Logs', path: '/admin/audit-logs', icon: <ScrollText size={18} />, roles: ['SuperAdmin'] },
       { name: 'Screen Time Monitor', path: '/admin/screen-time', icon: <Monitor size={18} />, roles: ['SuperAdmin'] },

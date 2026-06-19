@@ -31,6 +31,15 @@ import AuditLogs from './pages/AuditLogs';
 import TeamAttendanceDashboard from './pages/TeamAttendanceDashboard';
 import CompanyManagement from './pages/CompanyManagement';
 import CounsellingDashboard from './pages/CounsellingDashboard';
+import AssetManagement from './pages/AssetManagement';
+import AssetDetail from './pages/AssetDetail';
+import { AddAsset, EditAsset } from './pages/AssetForm';
+import AssetAssignments from './pages/AssetAssignments';
+import AssetHistoryPage from './pages/AssetHistoryPage';
+import CredentialAuditPage from './pages/CredentialAuditPage';
+import AssetReports from './pages/AssetReports';
+import MyAssignments from './pages/MyAssignments';
+import MyCredentials from './pages/MyCredentials';
 import VerificationQueue from './pages/VerificationQueue';
 
 const DashboardIndex = () => {
@@ -118,6 +127,16 @@ function App() {
           <Route path="companies" element={<CompanyManagement />} />
           <Route path="counselling" element={<CounsellingDashboard />} />
           <Route path="verification-queue" element={<VerificationQueue />} />
+          <Route path="assets" element={<AssetManagement />} />
+          <Route path="assets/new" element={<AddAsset />} />
+          <Route path="assets/:id" element={<AssetDetail />} />
+          <Route path="assets/:id/edit" element={<EditAsset />} />
+          <Route path="asset-assignments" element={<AssetAssignments />} />
+          <Route path="asset-history" element={<AssetHistoryPage />} />
+          <Route path="credential-audit" element={<CredentialAuditPage />} />
+          <Route path="asset-reports" element={<AssetReports />} />
+          <Route path="my-assets" element={<MyAssignments />} />
+          <Route path="my-credentials" element={<MyCredentials />} />
         </Route>
 
 
@@ -132,6 +151,8 @@ function App() {
           <Route path="screen-time" element={<ScreenTimeDashboard />} />
           <Route path="wfh-request" element={<WFHRequest />} />
           <Route path="profile" element={<EmployeeDetailAdmin />} />
+          <Route path="my-assets" element={<MyAssignments />} />
+          <Route path="my-credentials" element={<MyCredentials />} />
         </Route>
 
         {/* Counselling Team standalone layout */}

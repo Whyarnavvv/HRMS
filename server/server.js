@@ -89,11 +89,16 @@ const connectWithRetry = async (attempt = 1) => {
 
 connectWithRetry();
 
-// Guard: block API calls if DB is not connected
+// Guard: block API calls if DB is not connected.
+// This is shared by ALL /api routes — asset routes use the same connection.
+// If you see 503 errors only on asset pages, the DB is still initializing.
+// Wait a moment and reload — the retry loop in connectWithRetry() will reconnect.
 app.use('/api', (req, res, next) => {
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({
-      message: 'Database not connected. Please wait — the server is retrying the MongoDB connection. If this persists, check your MongoDB Atlas IP whitelist at https://cloud.mongodb.com'
+      message: 'Database not connected. The server is retrying the MongoDB connection — please wait a few seconds and try again.',
+      retryAfter: 5,
+      readyState: mongoose.connection.readyState
     });
   }
   next();
@@ -114,6 +119,9 @@ app.use('/api/screen-time', require('./routes/screenTimeRoutes'));
 app.use('/api/audit-logs', require('./routes/auditLogRoutes'));
 app.use('/api/companies', require('./routes/companyRoutes'));
 app.use('/api/counselling', require('./routes/counsellingRoutes'));
+app.use('/api/assets', require('./routes/assetRoutes'));
+app.use('/api/credentials', require('./routes/credentialRoutes'));
+app.use('/api/reports', require('./routes/reportRoutes'));
 
 
 const PORT = process.env.PORT || 5000;

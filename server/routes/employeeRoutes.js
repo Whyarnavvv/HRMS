@@ -49,7 +49,7 @@ const handleUploadError = (err, req, res, next) => {
 
 router.post('/', protect, authorize('Admin', 'HR', 'SuperAdmin'), upload.single('profilePic'), handleUploadError, createEmployee);
 router.get('/', protect, authorize('Admin', 'HR', 'Manager', 'AGM', 'SuperAdmin'), getEmployees);
-router.get('/stats', protect, authorize('Admin', 'HR', 'AGM', 'SuperAdmin'), getEmployeeStats);
+router.get('/stats', protect, authorize('Admin', 'HR', 'AGM', 'Manager', 'Employee', 'SuperAdmin'), getEmployeeStats);
 
 // Specific routes must come before parameterized routes
 router.get('/companies', protect, authorize('HR', 'Admin', 'SuperAdmin'), getCompaniesForDropdown);

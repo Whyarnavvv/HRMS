@@ -2,6 +2,7 @@ import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../utils/axios';
 import { AuthContext } from '../context/AuthContext';
+import KpiCelebrationPopup from '../components/KpiCelebrationPopup';
 import { Clock, Calendar as CalendarIcon, CheckCircle, Award, Cake, ListTodo, FileText, LogOut, Trophy, TrendingUp } from 'lucide-react';
 
 export default function EmployeeDashboard() {
@@ -14,6 +15,9 @@ export default function EmployeeDashboard() {
   const [monthlyLeaderboard, setMonthlyLeaderboard] = useState([]);
   const [kpiLogs, setKpiLogs] = useState([]);
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
+  const [checkOutCoords, setCheckOutCoords]       = useState(null);
+  const [checkOutLocError, setCheckOutLocError]   = useState('');
+  const [kpiCelebration, setKpiCelebration]       = useState(null);
 
   useEffect(() => {
     fetchDashboardData();
@@ -92,19 +96,44 @@ export default function EmployeeDashboard() {
     );
   };
 
+  // Collect location first, then open the confirmation modal
+  const requestCheckOutLocation = () => {
+    setCheckOutLocError('');
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCheckOutCoords({ latitude: pos.coords.latitude, longitude: pos.coords.longitude });
+        setShowCheckOutModal(true);
+      },
+      () => {
+        alert('Unable to retrieve your location. Please enable location permissions.');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
+
   const handleCheckOut = async () => {
     try {
-      await api.post('/attendance/check-out');
+      const { data } = await api.post('/attendance/check-out', checkOutCoords || {});
       setShowCheckOutModal(false);
-      alert('Checked out successfully!');
+      setCheckOutCoords(null);
       fetchDashboardData();
+      // Show KPI popup if points were awarded
+      if (data.kpiAwarded && data.kpiAwarded.length > 0) {
+        setKpiCelebration(data.kpiAwarded);
+      }
     } catch (err) {
       setShowCheckOutModal(false);
+      setCheckOutCoords(null);
       alert(err.response?.data?.message || 'Check-out failed');
     }
   };
 
   return (
+    <>
     <div className="min-h-screen bg-slate-50">
        {/* Top Premium Navbar */}
        <div className="bg-white border-b border-slate-200 px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center sticky top-0 z-30">
@@ -145,7 +174,7 @@ export default function EmployeeDashboard() {
                    </button>
                 ) : !todayAttendance?.checkOut ? (
                    <button 
-                     onClick={() => setShowCheckOutModal(true)}
+                     onClick={requestCheckOutLocation}
                      className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition shadow-xl shadow-slate-200"
                    >
                      Check Out
@@ -395,5 +424,12 @@ export default function EmployeeDashboard() {
          </div>
        )}
     </div>
+
+      {/* ── KPI Celebration Popup ── */}
+      <KpiCelebrationPopup
+        kpiAwarded={kpiCelebration}
+        onClose={() => setKpiCelebration(null)}
+      />
+    </>
   )
 }

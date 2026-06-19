@@ -3,6 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import api from '../utils/axios';
 import { AuthContext } from '../context/AuthContext';
 import { Users, Activity, Search, Clock, Cake, CheckCircle } from 'lucide-react';
+import AssetDashboardWidgets from '../components/AssetDashboardWidgets';
+import KpiCelebrationPopup from '../components/KpiCelebrationPopup';
 
 export default function AdminDashboard() {
   const { user } = useContext(AuthContext);
@@ -12,6 +14,7 @@ export default function AdminDashboard() {
   const [upcomingBirthdays, setUpcomingBirthdays] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [todayAttendance, setTodayAttendance] = useState(null);
+  const [kpiCelebration, setKpiCelebration] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -70,13 +73,31 @@ export default function AdminDashboard() {
   };
 
   const handleCheckOut = async () => {
-    try {
-      await api.post('/attendance/check-out');
-      alert('Checked out successfully!');
-      fetchData();
-    } catch (err) {
-      alert(err.response?.data?.message || 'Check-out failed');
+    if (!navigator.geolocation) {
+      alert('Geolocation is not supported by your browser');
+      return;
     }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { data } = await api.post('/attendance/check-out', {
+            latitude:  position.coords.latitude,
+            longitude: position.coords.longitude,
+          });
+          fetchData();
+          if (data.kpiAwarded && data.kpiAwarded.length > 0) {
+            setKpiCelebration(data.kpiAwarded);
+          }
+        } catch (err) {
+          alert(err.response?.data?.message || 'Check-out failed');
+        }
+      },
+      () => {
+        alert('Unable to retrieve your location. Please enable location permissions.');
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
   };
 
   const filteredEmployees = employees.filter(emp =>
@@ -85,6 +106,7 @@ export default function AdminDashboard() {
   );
 
   return (
+    <>
     <div className="animate-fade-in max-w-7xl mx-auto space-y-6 sm:space-y-8">
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
            <div>
@@ -170,6 +192,8 @@ export default function AdminDashboard() {
             </div>
          </div>
 
+         {/* ── Company Assets widgets ── */}
+         <AssetDashboardWidgets />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
            <div className="lg:col-span-2 space-y-6">
@@ -253,5 +277,11 @@ export default function AdminDashboard() {
            </div>
         </div>
     </div>
+
+      <KpiCelebrationPopup
+        kpiAwarded={kpiCelebration}
+        onClose={() => setKpiCelebration(null)}
+      />
+    </>
   )
 }
