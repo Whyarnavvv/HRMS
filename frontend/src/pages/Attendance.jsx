@@ -55,6 +55,7 @@ export default function Attendance() {
   const [statusFilter, setStatusFilter] = useState('All');
   const [selectedDay, setSelectedDay]   = useState(null); // detail modal
   const [kpiCelebration, setKpiCelebration] = useState(null); // [{points, reason, kpiType}]
+  const [showCheckOutModal, setShowCheckOutModal] = useState(false);
 
   // ── fetch ──
   useEffect(() => { fetchData(); }, []);
@@ -146,18 +147,21 @@ export default function Attendance() {
             latitude:  pos.coords.latitude,
             longitude: pos.coords.longitude,
           });
+          setShowCheckOutModal(false);
           setTodayRecord(data);
           if (data.kpiAwarded && data.kpiAwarded.length > 0) {
             setKpiCelebration(data.kpiAwarded);
           }
           fetchData(); fetchMonthRecords();
         } catch (err) {
+          setShowCheckOutModal(false);
           const msg = err.response?.data?.message || 'Check-out failed';
           setLocationError(msg);
         }
       },
       () => {
         setVerifyingLocation(false);
+        setShowCheckOutModal(false);
         setLocationError('Unable to get location. Please enable location permissions.');
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -252,7 +256,7 @@ export default function Attendance() {
               </div>
               <div className="flex flex-col items-end gap-1.5">
                 <button
-                  onClick={handleCheckOut}
+                  onClick={() => setShowCheckOutModal(true)}
                   disabled={verifyingLocation}
                   className="flex items-center gap-2 px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-sm transition shadow-lg disabled:opacity-50"
                 >
@@ -553,6 +557,52 @@ export default function Attendance() {
         kpiAwarded={kpiCelebration}
         onClose={() => setKpiCelebration(null)}
       />
+
+      {/* ── Check Out Confirmation Modal ── */}
+      {showCheckOutModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+              <div className="p-2.5 bg-amber-50 text-amber-500 rounded-2xl"><Clock size={22} /></div>
+              <div>
+                <h2 className="text-lg font-black text-slate-900">Confirm Check Out</h2>
+                <p className="text-xs text-slate-400 font-semibold">End your shift for today</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600 font-semibold">
+                Are you sure you want to check out?
+              </p>
+              <p className="text-xs text-slate-400">
+                This action will mark your attendance checkout for today.
+              </p>
+              {todayRecord?.checkIn && (
+                <div className="bg-slate-50 rounded-2xl p-4 flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Checked in at</span>
+                  <span className="text-sm font-black text-slate-700">
+                    {fmtTime(todayRecord.checkIn)}
+                  </span>
+                </div>
+              )}
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setShowCheckOutModal(false)}
+                  className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCheckOut}
+                  disabled={verifyingLocation}
+                  className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition shadow-lg disabled:opacity-50"
+                >
+                  {verifyingLocation ? 'Locating...' : 'Confirm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

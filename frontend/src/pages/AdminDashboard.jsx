@@ -15,6 +15,7 @@ export default function AdminDashboard() {
   const [searchQuery, setSearchQuery] = useState('');
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [kpiCelebration, setKpiCelebration] = useState(null);
+  const [showCheckOutModal, setShowCheckOutModal] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -85,15 +86,18 @@ export default function AdminDashboard() {
             latitude:  position.coords.latitude,
             longitude: position.coords.longitude,
           });
+          setShowCheckOutModal(false);
           fetchData();
           if (data.kpiAwarded && data.kpiAwarded.length > 0) {
             setKpiCelebration(data.kpiAwarded);
           }
         } catch (err) {
+          setShowCheckOutModal(false);
           alert(err.response?.data?.message || 'Check-out failed');
         }
       },
       () => {
+        setShowCheckOutModal(false);
         alert('Unable to retrieve your location. Please enable location permissions.');
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
@@ -125,7 +129,7 @@ export default function AdminDashboard() {
                  </button>
               ) : !todayAttendance?.checkOut ? (
                  <button 
-                   onClick={handleCheckOut}
+                   onClick={() => setShowCheckOutModal(true)}
                    className="w-full sm:w-auto px-6 sm:px-8 py-3 sm:py-4 bg-slate-900 text-white rounded-2xl font-bold hover:bg-slate-800 transition shadow-xl shadow-slate-200"
                  >
                    Check Out
@@ -282,6 +286,51 @@ export default function AdminDashboard() {
         kpiAwarded={kpiCelebration}
         onClose={() => setKpiCelebration(null)}
       />
+
+      {/* Check Out Confirmation Modal */}
+      {showCheckOutModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+              <div className="p-2.5 bg-amber-50 text-amber-500 rounded-2xl"><Clock size={22} /></div>
+              <div>
+                <h2 className="text-lg font-black text-slate-900">Confirm Check Out</h2>
+                <p className="text-xs text-slate-400 font-semibold">End your shift for today</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600 font-semibold">
+                Are you sure you want to check out?
+              </p>
+              <p className="text-xs text-slate-400">
+                This action will mark your attendance checkout for today.
+              </p>
+              {todayAttendance?.checkIn && (
+                <div className="bg-slate-50 rounded-2xl p-4 flex items-center justify-between">
+                  <span className="text-xs font-black text-slate-400 uppercase tracking-widest">Checked in at</span>
+                  <span className="text-sm font-black text-slate-700">
+                    {new Date(todayAttendance.checkIn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                </div>
+              )}
+              <div className="flex gap-3 pt-1">
+                <button
+                  onClick={() => setShowCheckOutModal(false)}
+                  className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleCheckOut}
+                  className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition shadow-lg"
+                >
+                  Confirm
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
