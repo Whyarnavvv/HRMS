@@ -1,6 +1,10 @@
 const User = require('../models/User');
 const KpiRecord = require('../models/KpiRecord');
 const Settings = require('../models/Settings');
+const { sendEmail } = require('../utils/emailService');
+
+// Alert recipient for duplicate KPI events
+const DUPLICATE_KPI_ALERT_EMAIL = 'adityakeshav108@gmail.com';
 
 // ─── IST Timezone Helper ──────────────────────────────────────────────────────
 // Converts a UTC Date object to its IST equivalent Date object
@@ -83,30 +87,41 @@ const calcWorkingHoursKpi = (totalHours, isHalfDay) => {
 
 // ─── Auto-KPI (called from attendanceController after checkout) ───────────────
 // Returns array of awarded KPI objects so the API response can include them.
+//
+// IDEMPOTENCY DESIGN (fixes race-condition duplicate bug):
+// ─────────────────────────────────────────────────────────
+// The old implementation used a single read-then-write guard:
+//   findOne(autoKpi:true, date=today) → if found, skip
+// This has two race windows:
+//   1. Two simultaneous checkOut requests both pass the guard before either
+//      inserts, producing 2× punctuality + 2× working_hours records.
+//   2. A second call arriving between the two sequential inserts (punctuality
+//      first, then working_hours) finds punctuality already there and bails,
+//      but a third concurrent call can still sneak in for working_hours.
+//
+// Fix: use findOneAndUpdate + upsert:true on a per-(employeeId, kpiType, date)
+// filter instead of a separate create.  MongoDB's atomic upsert guarantees
+// exactly-once insertion at the document level for each KPI type separately.
+// If the document already exists (duplicate call), the upsert is a no-op and
+// `upsertedCount` is 0, so we skip the User $inc.
+//
+// The date stored on the filter uses the plain YYYY-MM-DD string (dateStr) as
+// an exact equality match on the ISO-midnight UTC Date — the same value that
+// every insert uses — so the filter is always precise.
 const autoCalculateKpi = async (userId, attendanceRecord) => {
   try {
     const { checkIn, checkOut, totalHours, date } = attendanceRecord;
     if (!checkIn || !checkOut) return [];
 
-    const dateObj  = new Date(date + 'T00:00:00');
-    const dayStart = new Date(date + 'T00:00:00');
-    const dayEnd   = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+    // date is a 'YYYY-MM-DD' string (UTC-based, from toISOString().split('T')[0])
+    // Storing as midnight UTC keeps it consistent with every existing record.
+    const dateObj = new Date(date + 'T00:00:00.000Z');
 
-    // Prevent duplicate auto-KPI for the same date
-    const existing = await KpiRecord.findOne({
-      employeeId: userId,
-      date: { $gte: dayStart, $lt: dayEnd },
-      autoKpi: true
-    });
-    if (existing) return [];
-
-    // Convert check-in to IST to read hours/minutes correctly regardless of server timezone
+    // Convert check-in to IST to read hours/minutes correctly regardless of
+    // server timezone.
     const checkInIST = toIST(new Date(checkIn));
 
-    // Determine if this is a half-day shift using the attendance status flag
-    // that the checkOut handler already set reliably (status === 'Half-day').
-    // This is more accurate than a totalHours threshold because it correctly
-    // handles the exact 4h30m boundary and any manual overrides by HR.
+    // Determine half-day from the status flag set by checkOut handler.
     const isHalfDay = attendanceRecord.status === 'Half-day';
 
     const punctualityPts  = calcPunctualityKpi(checkInIST, isHalfDay);
@@ -114,7 +129,101 @@ const autoCalculateKpi = async (userId, attendanceRecord) => {
 
     const awarded = [];
 
-    // Award punctuality KPI
+    // ── Helper: atomic upsert for one KPI type ────────────────────────────
+    // Uses updateOne with upsert:true so that concurrent calls are serialised
+    // by MongoDB — only the first one that wins the upsert creates the doc.
+    // setOnInsert only writes the fields when the document is NEW; if it
+    // already exists the update is a no-op and result.upsertedCount === 0.
+    const awardKpi = async (kpiType, points, reason) => {
+      if (points <= 0) return;
+
+      const filter = {
+        employeeId: userId,
+        kpiType,
+        date: dateObj,      // exact UTC-midnight Date — unique per day per type
+        autoKpi: true
+      };
+
+      const result = await KpiRecord.updateOne(
+        filter,
+        {
+          $setOnInsert: {
+            employeeId: userId,
+            assignedBy: userId,
+            date:       dateObj,
+            points,
+            reason,
+            autoKpi:   true,
+            kpiType
+          }
+        },
+        { upsert: true }
+      );
+
+      // upsertedCount === 1 means a new document was just created (first time).
+      // If 0, the record already existed — skip the User $inc to avoid inflating totals.
+      if (result.upsertedCount === 1) {
+        await User.findByIdAndUpdate(userId, {
+          $inc: { totalKpi: points, totalAdded: points }
+        });
+        awarded.push({ points, reason, kpiType });
+      } else {
+        // Duplicate blocked — fire an alert email so it can be investigated.
+        // This runs async and does NOT block the checkout response.
+        const employee = await User.findById(userId).select('name employeeId').lean();
+        const dateLabel = dateObj.toLocaleDateString('en-IN', {
+          day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata'
+        });
+        sendEmail({
+          to: DUPLICATE_KPI_ALERT_EMAIL,
+          subject: `⚠️ Duplicate KPI Blocked — ${employee?.name || userId} (${kpiType})`,
+          html: `
+            <div style="font-family:sans-serif;max-width:600px;margin:auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px;">
+              <h2 style="color:#dc2626;margin-top:0;">⚠️ Duplicate Auto-KPI Attempt Blocked</h2>
+              <p>A duplicate auto-KPI insertion was detected and blocked by the idempotency guard.</p>
+              <table style="width:100%;border-collapse:collapse;font-size:14px;margin-top:16px;">
+                <tr style="background:#f8fafc;">
+                  <td style="padding:10px 14px;font-weight:700;color:#64748b;width:140px;">Employee</td>
+                  <td style="padding:10px 14px;color:#1e293b;">${employee?.name || '(unknown)'}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 14px;font-weight:700;color:#64748b;">Employee ID</td>
+                  <td style="padding:10px 14px;color:#1e293b;">${employee?.employeeId || userId}</td>
+                </tr>
+                <tr style="background:#f8fafc;">
+                  <td style="padding:10px 14px;font-weight:700;color:#64748b;">KPI Type</td>
+                  <td style="padding:10px 14px;color:#1e293b;">${kpiType}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 14px;font-weight:700;color:#64748b;">Points</td>
+                  <td style="padding:10px 14px;color:#1e293b;">${points}</td>
+                </tr>
+                <tr style="background:#f8fafc;">
+                  <td style="padding:10px 14px;font-weight:700;color:#64748b;">Date (IST)</td>
+                  <td style="padding:10px 14px;color:#1e293b;">${dateLabel}</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 14px;font-weight:700;color:#64748b;">Reason</td>
+                  <td style="padding:10px 14px;color:#1e293b;">${reason}</td>
+                </tr>
+                <tr style="background:#f8fafc;">
+                  <td style="padding:10px 14px;font-weight:700;color:#64748b;">Detected at</td>
+                  <td style="padding:10px 14px;color:#1e293b;">${new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' })} IST</td>
+                </tr>
+              </table>
+              <p style="margin-top:20px;font-size:13px;color:#64748b;">
+                The KPI was <strong>NOT</strong> awarded — the existing record for this employee/type/date was kept intact.<br/>
+                No points were added to the employee's total.<br/><br/>
+                This alert is sent automatically by the HRMS duplicate-KPI guard.
+              </p>
+              <p style="color:#94a3b8;font-size:12px;margin-top:16px;">Study Palace Hub HRMS</p>
+            </div>
+          `
+        }).catch(err => console.error('Duplicate KPI alert email failed:', err.message));
+      }
+    };
+
+    // Award punctuality KPI (idempotent)
     if (punctualityPts > 0) {
       const checkInStr = checkInIST.toLocaleTimeString('en-IN', {
         hour: '2-digit', minute: '2-digit', hour12: true
@@ -122,38 +231,13 @@ const autoCalculateKpi = async (userId, attendanceRecord) => {
       const reason = isHalfDay
         ? `Half-day check-in at ${checkInStr} IST — Punctuality KPI (Auto)`
         : `Check-in at ${checkInStr} IST — Punctuality KPI (Auto)`;
-
-      await KpiRecord.create({
-        employeeId: userId,
-        assignedBy: userId,
-        date: dateObj,
-        points: punctualityPts,
-        reason,
-        autoKpi: true,
-        kpiType: 'punctuality'
-      });
-      await User.findByIdAndUpdate(userId, {
-        $inc: { totalKpi: punctualityPts, totalAdded: punctualityPts }
-      });
-      awarded.push({ points: punctualityPts, reason, kpiType: 'punctuality' });
+      await awardKpi('punctuality', punctualityPts, reason);
     }
 
-    // Award working hours KPI
+    // Award working hours KPI (idempotent)
     if (workingHoursPts > 0) {
       const reason = `Worked ${totalHours}h — Working Hours KPI (Auto)`;
-      await KpiRecord.create({
-        employeeId: userId,
-        assignedBy: userId,
-        date: dateObj,
-        points: workingHoursPts,
-        reason,
-        autoKpi: true,
-        kpiType: 'working_hours'
-      });
-      await User.findByIdAndUpdate(userId, {
-        $inc: { totalKpi: workingHoursPts, totalAdded: workingHoursPts }
-      });
-      awarded.push({ points: workingHoursPts, reason, kpiType: 'working_hours' });
+      await awardKpi('working_hours', workingHoursPts, reason);
     }
 
     return awarded;
@@ -471,8 +555,14 @@ const getEmployeeOfYear = async (req, res) => {
 };
 
 // ─── Yearly Max KPI Settings ──────────────────────────────────────────────────
+//
+// FALLBACK used when no fiscal-year config covers today's date and no legacy
+// calendar-year config exists either.
 const YEARLY_MAX_POINTS_FALLBACK = 2920;
 
+// ── GET /api/kpi/yearly-max ───────────────────────────────────────────────────
+// Returns the full yearlyMaxKpi array (all fiscal + legacy calendar entries).
+// Frontend uses this to populate the saved-entries display.
 const getYearlyMaxKpi = async (req, res) => {
   try {
     const settings = await Settings.findOne({ name: 'GlobalSettings' });
@@ -482,18 +572,69 @@ const getYearlyMaxKpi = async (req, res) => {
   }
 };
 
+// ── PUT /api/kpi/yearly-max ───────────────────────────────────────────────────
+// Upserts a fiscal-year KPI config entry.
+//
+// Expected body (fiscal year):
+//   { label: "April 2026 to March 2027", startDate: "2026-04-01",
+//     endDate: "2027-04-01", workingDays: 310, maxPoints: 4960 }
+//
+// Legacy calendar-year body still accepted for backward compat:
+//   { year: 2025, maxPoints: 2920 }
+//
+// Match key: fiscal entries matched by label; legacy entries matched by year.
 const setYearlyMaxKpi = async (req, res) => {
   try {
-    const { year, maxPoints } = req.body;
-    if (!year || !maxPoints || Number(maxPoints) < 1)
-      return res.status(400).json({ message: 'Valid year and maxPoints are required' });
+    const { label, startDate, endDate, workingDays, year, maxPoints } = req.body;
+
+    if (!maxPoints || Number(maxPoints) < 1) {
+      return res.status(400).json({ message: 'Valid maxPoints is required' });
+    }
+
+    // Determine mode: fiscal (label provided) or legacy (year number provided)
+    const isFiscal = !!(label && startDate && endDate);
+    const isLegacy = !!(year && !label);
+
+    if (!isFiscal && !isLegacy) {
+      return res.status(400).json({
+        message: 'Provide either { label, startDate, endDate, workingDays, maxPoints } for a fiscal year, ' +
+                 'or { year, maxPoints } for a legacy calendar year.'
+      });
+    }
 
     let settings = await Settings.findOne({ name: 'GlobalSettings' });
     if (!settings) settings = await Settings.create({ name: 'GlobalSettings' });
 
-    const existing = settings.yearlyMaxKpi.find(e => e.year === Number(year));
-    if (existing) existing.maxPoints = Number(maxPoints);
-    else settings.yearlyMaxKpi.push({ year: Number(year), maxPoints: Number(maxPoints) });
+    if (isFiscal) {
+      const startD  = new Date(startDate);
+      const endD    = new Date(endDate);
+
+      if (isNaN(startD) || isNaN(endD) || endD <= startD) {
+        return res.status(400).json({ message: 'startDate must be before endDate' });
+      }
+
+      // Upsert by label — allows re-saving to update maxPoints / workingDays
+      const existing = settings.yearlyMaxKpi.find(e => e.label === label);
+      if (existing) {
+        existing.maxPoints    = Number(maxPoints);
+        if (workingDays) existing.workingDays = Number(workingDays);
+        existing.startDate    = startD;
+        existing.endDate      = endD;
+      } else {
+        settings.yearlyMaxKpi.push({
+          label,
+          startDate:   startD,
+          endDate:     endD,
+          workingDays: workingDays ? Number(workingDays) : undefined,
+          maxPoints:   Number(maxPoints)
+        });
+      }
+    } else {
+      // Legacy calendar-year path — untouched behaviour
+      const existing = settings.yearlyMaxKpi.find(e => e.year === Number(year));
+      if (existing) existing.maxPoints = Number(maxPoints);
+      else settings.yearlyMaxKpi.push({ year: Number(year), maxPoints: Number(maxPoints) });
+    }
 
     await settings.save();
     res.status(200).json(settings.yearlyMaxKpi);
@@ -502,17 +643,83 @@ const setYearlyMaxKpi = async (req, res) => {
   }
 };
 
+// ── GET /api/kpi/fiscal-years ─────────────────────────────────────────────────
+// Returns only the fiscal-year entries (those with a label + startDate/endDate),
+// sorted newest-first.  Used by the frontend label selector dropdown.
+const getFiscalYears = async (req, res) => {
+  try {
+    const settings = await Settings.findOne({ name: 'GlobalSettings' });
+    const fiscal = (settings?.yearlyMaxKpi || [])
+      .filter(e => e.label && e.startDate && e.endDate)
+      .sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
+    res.status(200).json(fiscal);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
 // ─── Yearly Increment Calculation ────────────────────────────────────────────
+//
+// FISCAL-YEAR AWARE version.
+//
+// Resolution order for the period boundaries:
+//   1. If ?label=  is supplied → look up the fiscal-year entry with that label
+//      and use its startDate / endDate.
+//   2. Else → find the fiscal-year entry whose startDate ≤ today < endDate
+//      (i.e. the currently active fiscal year).
+//   3. Else fallback: calendar year from ?year= param (legacy behaviour).
+//
+// The formula itself is UNCHANGED:
+//   kpiPct = round(yearlyPoints / maxPoints × 100)
+// Only the date window and the source of maxPoints change.
 const getYearlyIncrement = async (req, res) => {
   try {
-    const year  = parseInt(req.query.year) || new Date().getFullYear();
-    const start = new Date(year,     0, 1);
-    const end   = new Date(year + 1, 0, 1);
+    const settings = await Settings.findOne({ name: 'GlobalSettings' });
+    const allConfigs = settings?.yearlyMaxKpi || [];
 
-    const settings  = await Settings.findOne({ name: 'GlobalSettings' });
-    const yearConfig = settings?.yearlyMaxKpi?.find(e => e.year === year);
-    const maxPoints  = yearConfig?.maxPoints || YEARLY_MAX_POINTS_FALLBACK;
+    let start, end, maxPoints, periodLabel, workingDays;
 
+    // ── Priority 1: explicit label param ─────────────────────────────────────
+    if (req.query.label) {
+      const cfg = allConfigs.find(e => e.label === req.query.label);
+      if (!cfg) {
+        return res.status(404).json({ message: `No KPI config found for label: ${req.query.label}` });
+      }
+      start        = new Date(cfg.startDate);
+      end          = new Date(cfg.endDate);
+      maxPoints    = cfg.maxPoints;
+      workingDays  = cfg.workingDays;
+      periodLabel  = cfg.label;
+
+    // ── Priority 2: auto-detect active fiscal year ────────────────────────────
+    } else {
+      const today     = new Date();
+      const activeCfg = allConfigs.find(e =>
+        e.startDate && e.endDate &&
+        new Date(e.startDate) <= today &&
+        today < new Date(e.endDate)
+      );
+
+      if (activeCfg) {
+        start        = new Date(activeCfg.startDate);
+        end          = new Date(activeCfg.endDate);
+        maxPoints    = activeCfg.maxPoints;
+        workingDays  = activeCfg.workingDays;
+        periodLabel  = activeCfg.label;
+
+      // ── Priority 3: legacy calendar year (backward compat) ──────────────────
+      } else {
+        const year       = parseInt(req.query.year) || new Date().getFullYear();
+        start            = new Date(year,     0, 1);
+        end              = new Date(year + 1, 0, 1);
+        const yearConfig = allConfigs.find(e => e.year === year);
+        maxPoints        = yearConfig?.maxPoints || YEARLY_MAX_POINTS_FALLBACK;
+        workingDays      = yearConfig?.workingDays;
+        periodLabel      = String(year);
+      }
+    }
+
+    // ── Aggregate KPI points within the resolved window ───────────────────────
     const agg = await KpiRecord.aggregate([
       { $match: { date: { $gte: start, $lt: end }, points: { $gt: 0 } } },
       { $group: { _id: '$employeeId', yearlyPoints: { $sum: '$points' } } }
@@ -523,6 +730,7 @@ const getYearlyIncrement = async (req, res) => {
       .select('name employeeId role designation department salaryStructure');
     const userMap = Object.fromEntries(users.map(u => [u._id.toString(), u]));
 
+    // ── Same increment bands as before — formula unchanged ────────────────────
     const result = agg.map(a => {
       const u = userMap[a._id.toString()];
       if (!u) return null;
@@ -535,20 +743,27 @@ const getYearlyIncrement = async (req, res) => {
       else if (pct >= 70) { increment = '11%–14%'; }
       else if (pct >= 60) { increment = '10%'; }
       return {
-        _id:          a._id,
-        name:         u.name,
-        employeeId:   u.employeeId,
-        role:         u.role,
-        department:   u.department,
-        baseSalary:   u.salaryStructure?.baseSalary || 0,
-        yearlyPoints: parseFloat(a.yearlyPoints.toFixed(2)),
+        _id:           a._id,
+        name:          u.name,
+        employeeId:    u.employeeId,
+        role:          u.role,
+        department:    u.department,
+        baseSalary:    u.salaryStructure?.baseSalary || 0,
+        yearlyPoints:  parseFloat(a.yearlyPoints.toFixed(2)),
         kpiPercentage: pct,
         increment,
         bonus
       };
     }).filter(Boolean).sort((a, b) => b.kpiPercentage - a.kpiPercentage);
 
-    res.status(200).json({ year, maxPoints, employees: result });
+    res.status(200).json({
+      periodLabel,
+      maxPoints,
+      workingDays:  workingDays || null,
+      startDate:    start,
+      endDate:      end,
+      employees:    result
+    });
   } catch (error) {
     res.status(500).json({ message: error.message });
   }
@@ -566,5 +781,6 @@ module.exports = {
   getYearlyIncrement,
   autoCalculateKpi,
   getYearlyMaxKpi,
-  setYearlyMaxKpi
+  setYearlyMaxKpi,
+  getFiscalYears
 };

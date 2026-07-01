@@ -18,6 +18,7 @@ export default function EmployeeDashboard() {
   const [checkOutCoords, setCheckOutCoords]       = useState(null);
   const [checkOutLocError, setCheckOutLocError]   = useState('');
   const [kpiCelebration, setKpiCelebration]       = useState(null);
+  const [isCheckingOut, setIsCheckingOut]         = useState(false);
 
   useEffect(() => {
     fetchDashboardData();
@@ -116,12 +117,13 @@ export default function EmployeeDashboard() {
   };
 
   const handleCheckOut = async () => {
+    if (isCheckingOut) return;           // block re-entry
+    setIsCheckingOut(true);
     try {
       const { data } = await api.post('/attendance/check-out', checkOutCoords || {});
       setShowCheckOutModal(false);
       setCheckOutCoords(null);
       fetchDashboardData();
-      // Show KPI popup if points were awarded
       if (data.kpiAwarded && data.kpiAwarded.length > 0) {
         setKpiCelebration(data.kpiAwarded);
       }
@@ -129,6 +131,8 @@ export default function EmployeeDashboard() {
       setShowCheckOutModal(false);
       setCheckOutCoords(null);
       alert(err.response?.data?.message || 'Check-out failed');
+    } finally {
+      setIsCheckingOut(false);
     }
   };
 
@@ -413,11 +417,12 @@ export default function EmployeeDashboard() {
                    Cancel
                  </button>
                  <button
-                   onClick={handleCheckOut}
-                   className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition shadow-lg"
-                 >
-                   Yes, Check Out
-                 </button>
+                  onClick={handleCheckOut}
+                  disabled={isCheckingOut}
+                  className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  {isCheckingOut ? 'Checking out…' : 'Yes, Check Out'}
+                </button>
                </div>
              </div>
            </div>

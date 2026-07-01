@@ -35,6 +35,7 @@ export default function ManagerDashboard() {
   const [teamTasks, setTeamTasks]             = useState([]);
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
   const [kpiCelebration, setKpiCelebration]   = useState(null);
+  const [isCheckingOut, setIsCheckingOut]     = useState(false);
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -90,7 +91,9 @@ export default function ManagerDashboard() {
   };
 
   const handleCheckOut = async () => {
+    if (isCheckingOut) return;           // block re-entry
     if (!navigator.geolocation) return alert('Geolocation not supported');
+    setIsCheckingOut(true);
     navigator.geolocation.getCurrentPosition(
       async (pos) => {
         try {
@@ -106,9 +109,14 @@ export default function ManagerDashboard() {
         } catch (err) {
           setShowCheckOutModal(false);
           alert(err.response?.data?.message || 'Check-out failed');
+        } finally {
+          setIsCheckingOut(false);
         }
       },
-      () => alert('Enable location permissions.'),
+      () => {
+        alert('Enable location permissions.');
+        setIsCheckingOut(false);
+      },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
@@ -462,7 +470,9 @@ export default function ManagerDashboard() {
               )}
               <div className="flex gap-3 pt-1">
                 <button onClick={() => setShowCheckOutModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-200 transition">Cancel</button>
-                <button onClick={handleCheckOut} className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition shadow-lg">Yes, Check Out</button>
+                <button onClick={handleCheckOut} disabled={isCheckingOut} className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition shadow-lg disabled:opacity-60 disabled:cursor-not-allowed">
+                  {isCheckingOut ? 'Checking out…' : 'Yes, Check Out'}
+                </button>
               </div>
             </div>
           </div>

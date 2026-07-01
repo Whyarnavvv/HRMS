@@ -16,6 +16,7 @@ export default function AdminDashboard() {
   const [todayAttendance, setTodayAttendance] = useState(null);
   const [kpiCelebration, setKpiCelebration] = useState(null);
   const [showCheckOutModal, setShowCheckOutModal] = useState(false);
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -74,11 +75,12 @@ export default function AdminDashboard() {
   };
 
   const handleCheckOut = async () => {
+    if (isCheckingOut) return;           // block re-entry
     if (!navigator.geolocation) {
       alert('Geolocation is not supported by your browser');
       return;
     }
-
+    setIsCheckingOut(true);
     navigator.geolocation.getCurrentPosition(
       async (position) => {
         try {
@@ -94,11 +96,14 @@ export default function AdminDashboard() {
         } catch (err) {
           setShowCheckOutModal(false);
           alert(err.response?.data?.message || 'Check-out failed');
+        } finally {
+          setIsCheckingOut(false);
         }
       },
       () => {
         setShowCheckOutModal(false);
         alert('Unable to retrieve your location. Please enable location permissions.');
+        setIsCheckingOut(false);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
@@ -322,9 +327,10 @@ export default function AdminDashboard() {
                 </button>
                 <button
                   onClick={handleCheckOut}
-                  className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition shadow-lg"
+                  disabled={isCheckingOut}
+                  className="flex-1 py-3 bg-slate-900 text-white rounded-2xl font-bold text-sm hover:bg-slate-800 transition shadow-lg disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  Confirm
+                  {isCheckingOut ? 'Checking out…' : 'Confirm'}
                 </button>
               </div>
             </div>

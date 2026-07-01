@@ -2,6 +2,32 @@ import { useEffect, useMemo, useState } from 'react';
 import api from '../utils/axios';
 import { Users, Target, PlusCircle, MinusCircle, Trophy, Star, TrendingUp } from 'lucide-react';
 
+// ── Fiscal year helpers ───────────────────────────────────────────────────────
+// Generate the next N fiscal year labels starting from a given April year.
+// e.g. fiscalLabel(2026) → "April 2026 to March 2027"
+const fiscalLabel = (aprilYear) =>
+  `April ${aprilYear} to March ${aprilYear + 1}`;
+
+// The fiscal year that contains a given date (defaults to today).
+// If today is April or later, FY starts this year; otherwise last year.
+const currentFiscalAprilYear = (d = new Date()) =>
+  d.getMonth() >= 3 ? d.getFullYear() : d.getFullYear() - 1;
+
+// Generate selectable fiscal year options: 2 past + current + 2 future
+const buildFiscalOptions = () => {
+  const base = currentFiscalAprilYear();
+  return Array.from({ length: 5 }, (_, i) => base - 2 + i).map(y => ({
+    aprilYear: y,
+    label: fiscalLabel(y),
+    startDate: `${y}-04-01`,
+    endDate:   `${y + 1}-04-01`
+  }));
+};
+
+const FISCAL_OPTIONS = buildFiscalOptions();
+const DEFAULT_WORKING_DAYS = 310;
+const DEFAULT_MAX_POINTS   = 4960;
+
 export default function KPIManagement() {
   const [employees, setEmployees] = useState([]);
   const [history, setHistory] = useState([]);
@@ -12,8 +38,12 @@ export default function KPIManagement() {
   const [yearlyIncrement, setYearlyIncrement] = useState(null);
   const [showIncrement, setShowIncrement] = useState(false);
   const [yearlyMaxKpi, setYearlyMaxKpi] = useState([]);
-  const [maxKpiYear, setMaxKpiYear] = useState(new Date().getFullYear());
-  const [maxKpiPoints, setMaxKpiPoints] = useState('');
+  // Fiscal year selector state — default to the option matching current FY
+  const [selectedFiscalOption, setSelectedFiscalOption] = useState(
+    () => FISCAL_OPTIONS.find(o => o.aprilYear === currentFiscalAprilYear()) || FISCAL_OPTIONS[2]
+  );
+  const [maxKpiWorkingDays, setMaxKpiWorkingDays] = useState(String(DEFAULT_WORKING_DAYS));
+  const [maxKpiPoints, setMaxKpiPoints] = useState(String(DEFAULT_MAX_POINTS));
 
   const [selectedTeam, setSelectedTeam] = useState('');
   const [selectedEmployee, setSelectedEmployee] = useState('');
@@ -72,12 +102,20 @@ export default function KPIManagement() {
   };
 
   const saveYearlyMaxKpi = async () => {
-    if (!maxKpiPoints || Number(maxKpiPoints) < 1) return alert('Enter a valid points value.');
+    const pts  = Number(maxKpiPoints);
+    const days = Number(maxKpiWorkingDays);
+    if (!pts || pts < 1) return alert('Enter a valid Max Points value.');
+    if (!days || days < 1) return alert('Enter a valid Working Days value.');
     try {
-      const { data } = await api.put('/kpi/yearly-max', { year: maxKpiYear, maxPoints: Number(maxKpiPoints) });
+      const { data } = await api.put('/kpi/yearly-max', {
+        label:       selectedFiscalOption.label,
+        startDate:   selectedFiscalOption.startDate,
+        endDate:     selectedFiscalOption.endDate,
+        workingDays: days,
+        maxPoints:   pts
+      });
       setYearlyMaxKpi(data);
-      setMaxKpiPoints('');
-      alert(`Max KPI for ${maxKpiYear} set to ${maxKpiPoints} pts`);
+      alert(`Fiscal year "${selectedFiscalOption.label}" saved: ${days} working days, ${pts} max pts`);
     } catch (e) {
       alert(e.response?.data?.message || 'Failed to save');
     }
@@ -96,11 +134,13 @@ export default function KPIManagement() {
 
   const fetchYearlyIncrement = async () => {
     try {
-      const { data } = await api.get('/kpi/yearly-increment');
+      const { data } = await api.get('/kpi/yearly-increment', {
+        params: { label: selectedFiscalOption.label }
+      });
       setYearlyIncrement(data);
       setShowIncrement(true);
     } catch (e) {
-      alert('Failed to load yearly increment data');
+      alert(e.response?.data?.message || 'Failed to load yearly increment data');
     }
   };
 
@@ -311,16 +351,44 @@ export default function KPIManagement() {
       <div className="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
         <div className="flex items-center justify-between mb-4">
           <p className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-            <Target size={14} /> Yearly Max KPI Points
+            <Target size={14} /> Fiscal Year KPI Config
           </p>
         </div>
         <div className="flex flex-wrap gap-3 items-end">
           <div className="flex flex-col gap-1">
-            <label className="text-[10px] font-black uppercase text-slate-400">Year</label>
+            <label className="text-[10px] font-black uppercase text-slate-400">Fiscal Year</label>
+            <select
+              value={selectedFiscalOption.label}
+              onChange={e => {
+                const opt = FISCAL_OPTIONS.find(o => o.label === e.target.value);
+                if (opt) {
+                  setSelectedFiscalOption(opt);
+                  // Auto-fill working days and points from any existing saved config
+                  const saved = yearlyMaxKpi.find(k => k.label === opt.label);
+                  if (saved) {
+                    if (saved.workingDays) setMaxKpiWorkingDays(String(saved.workingDays));
+                    setMaxKpiPoints(String(saved.maxPoints));
+                  } else {
+                    setMaxKpiWorkingDays(String(DEFAULT_WORKING_DAYS));
+                    setMaxKpiPoints(String(DEFAULT_MAX_POINTS));
+                  }
+                }
+              }}
+              className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-bold text-sm"
+            >
+              {FISCAL_OPTIONS.map(o => (
+                <option key={o.label} value={o.label}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-[10px] font-black uppercase text-slate-400">Working Days</label>
             <input
               type="number"
-              value={maxKpiYear}
-              onChange={e => setMaxKpiYear(Number(e.target.value))}
+              min="1"
+              value={maxKpiWorkingDays}
+              onChange={e => setMaxKpiWorkingDays(e.target.value)}
+              placeholder="e.g. 310"
               className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-bold text-sm w-28"
             />
           </div>
@@ -331,7 +399,7 @@ export default function KPIManagement() {
               min="1"
               value={maxKpiPoints}
               onChange={e => setMaxKpiPoints(e.target.value)}
-              placeholder="e.g. 2920"
+              placeholder="e.g. 4960"
               className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 font-bold text-sm w-36"
             />
           </div>
@@ -342,13 +410,22 @@ export default function KPIManagement() {
             Save
           </button>
         </div>
+        {/* Saved fiscal year configs */}
         {yearlyMaxKpi.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-2">
-            {yearlyMaxKpi.sort((a, b) => b.year - a.year).map(e => (
-              <span key={e.year} className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-700">
-                {e.year}: {e.maxPoints} pts
-              </span>
-            ))}
+            {yearlyMaxKpi
+              .slice()
+              .sort((a, b) => {
+                // Fiscal entries sort by startDate desc; legacy by year desc
+                const aKey = a.startDate ? new Date(a.startDate).getTime() : (a.year || 0) * 10000;
+                const bKey = b.startDate ? new Date(b.startDate).getTime() : (b.year || 0) * 10000;
+                return bKey - aKey;
+              })
+              .map((e, i) => (
+                <span key={e.label || e.year || i} className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-black text-slate-700">
+                  {e.label || e.year}: {e.maxPoints} pts{e.workingDays ? ` / ${e.workingDays} days` : ''}
+                </span>
+              ))}
           </div>
         )}
       </div>
@@ -363,7 +440,7 @@ export default function KPIManagement() {
             onClick={fetchYearlyIncrement}
             className="bg-slate-900 text-white text-xs font-black px-4 py-2 rounded-xl hover:bg-black transition"
           >
-            Calculate {new Date().getFullYear()}
+            Calculate — {selectedFiscalOption.label}
           </button>
         </div>
         {showIncrement && yearlyIncrement && (
@@ -406,7 +483,11 @@ export default function KPIManagement() {
                 ))}
               </tbody>
             </table>
-            <p className="text-[10px] text-slate-400 mt-3">Max possible points: {yearlyIncrement.maxPoints} | Year: {yearlyIncrement.year}</p>
+            <p className="text-[10px] text-slate-400 mt-3">
+              Fiscal year: {yearlyIncrement.periodLabel} &nbsp;|&nbsp;
+              Max points: {yearlyIncrement.maxPoints}
+              {yearlyIncrement.workingDays ? ` | Working days: ${yearlyIncrement.workingDays}` : ''}
+            </p>
           </div>
         )}
       </div>
